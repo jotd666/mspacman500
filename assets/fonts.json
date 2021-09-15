@@ -1,0 +1,47 @@
+{
+"source":"text.png",
+"x_offset":0,
+"y_offset":0,
+ "width" : 8,
+ "height" : 8,
+ "horizontal" : true,
+ "objects":[
+ {
+   "name":"letter_row_0",
+   "frames":16,
+   "start_x":0,
+   "start_y":0
+ },
+ {
+   "name":"letter_row_1",
+   "frames":16,
+   "start_x":0,
+   "start_y":8
+ },
+ {
+   "name":"digit_row_0",
+   "frames":14,
+   "start_x":0,
+   "start_y":16
+ },
+ {
+   "name":"copyright",
+   "frames":1,
+   "start_x":96,
+   "start_y":8
+ },
+ {
+   "name":"pts",
+   "frames":3,
+   "start_x":104,
+   "start_y":8
+ },
+ {
+   "name":"namco",
+   "frames":1,
+   "start_x":0,
+   "start_y":24,
+   "width":64
+ }
+ ]
+}
