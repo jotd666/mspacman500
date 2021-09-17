@@ -101,7 +101,7 @@ def process_mazes():
             fw.write("\tdc.w\t${:x}  ; fill\n\n".format(torgb4(fill_color)))
 
             # now dump each maze with its own palette
-            maze_palette = [(0,0,0),outline_color,(0,0,0),fill_color]  # temp yellow pac
+            maze_palette = [(0,0,0),(0,0,0),outline_color,fill_color]  # black, dot color, maze colors
 
             bitplanelib.palette_image2raw(maze_img,r"../{}/maze_{}.bin".format(sprites_dir,i),maze_palette)
         # pixel 1,5 holds the fill color of the maze wall
@@ -114,9 +114,9 @@ def process_mazes():
 # some key colors are located at a 2**n position
 # so they can be drawn with just one plane (pacman, white fonts)
 game_palette_txt = """
-     dc.w	$0000,$022f,$0ff0,$0f00     ; black (0), maze outline, pac yellow (2), maze fill
-     dc.w   $FBB,$00ff,$04ba,$0F00,$0FFF,$0fbf    ; dot pink (4), whatever, red (replaces old color), whatever, white (8), pen gate pink (8+1)
-	 dc.w	$fc2,$0edf,$0fb5,$0fbb,$0F0,$d94     ; $04bf $0ddf
+     dc.w	$0000,$111,$0222,$0333     ; black (0), dot (dummy, dynamic 1), maze outline (2 dummy, dynamic), maze fill (dummy, dynamic 3)
+     dc.w   $0ff0,$00ff,$04ba,$0F00,$0FFF,$0fbf    ; pac yellow (4), whatever, red, whatever, white (8), pen gate pink (8+1)
+	 dc.w	$fc2,$0edf,$0fb5,$0fbb,$0F0,$d94     ; whatever (mostly bonus items colors)
      ; sprite palette 16-32
      ; red ghost
      dc.w	$0000,$0f00,$022f,$0edf
@@ -296,7 +296,7 @@ def process_fonts():
             namei = "{}_{}".format(name,i) if nb_frames != 1 else name
             bitplanelib.palette_image2raw(img,"../{}/{}.bin".format(sprites_dir,name_dict.get(namei,namei)),used_palette,palette_precision_mask=0xF0)
 
-#process_mazes()
+process_mazes()
 
 process_tiles()
 

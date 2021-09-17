@@ -196,7 +196,7 @@ BONUS_SCORE_TIMER_VALUE = NB_TICKS_PER_SEC*2     ; ORIGINAL_TICKS_PER_SEC?
 BLINK_RATE = ORIGINAL_TICKS_PER_SEC/2 ; for powerdots
 PREPOST_TURN_LOCK = 4
 
-DOT_PLANE_OFFSET = SCREEN_PLANE_SIZE*2-(X_START/8)
+DOT_PLANE_OFFSET = -(X_START/8)
 
 ; direction enumerates, follows order of ghosts in the sprite sheet
 RIGHT = 0
@@ -2360,8 +2360,8 @@ draw_maze:
     ; set colors
     lea _custom+color,a0
     move.l  maze_colors(pc),a1
-    move.w  (a1)+,(8,a0)  ; dots, color 4
-	move.w  (a1)+,(2,a0)  ; outline
+    move.w  (a1)+,(2,a0)  ; dots, color 1
+	move.w  (a1)+,(4,a0)  ; outline
 	move.w  (a1)+,(6,a0) ; fill
     
     lea screen_data,a1
@@ -3583,7 +3583,7 @@ draw_intermission_screen_level_2:
     lea player(pc),a2
     cmp.w   #LEFT,direction(a2)
     beq.b   .small
-    bsr draw_big_pacman
+    ;;bsr draw_big_pacman
     bra.b   .outd
 .small
     bsr draw_pacman
@@ -5082,7 +5082,7 @@ draw_pacman:
     add.w   d0,d0
     move.l  (a0,d0.w),a0
 .pacblit
-    lea	screen_data+SCREEN_PLANE_SIZE,a1
+    lea	screen_data+SCREEN_PLANE_SIZE*2,a1
     move.w  xpos(a2),d0
     move.w  ypos(a2),d1
     ; center => top left
@@ -5125,75 +5125,6 @@ draw_pacman:
     move.l  a1,previous_pacman_address
     rts
 
-draw_big_pacman:
-    lea     player(pc),a2
-.normal    
-    lea  big_pac_table(pc),a0
-    move.w  frame(a2),d0
-    add.w   d0,d0
-    add.w   d0,d0
-    move.l  (a0,d0.w),a0
-.pacblit
-    lea	screen_data+SCREEN_PLANE_SIZE,a1
-    move.w  xpos(a2),d0
-    move.w  ypos(a2),d1
-    ; center => top left
-    moveq.l #-1,d3 ; first/last word mask
-    sub.w  #8+Y_START,d1
-    sub.w  #8+X_START,d0
-    bpl.b   .no_left
-    ; d0 is negative
-    neg.w   d0
-    lsr.l   d0,d3
-    neg.w   d0
-    add.w   #NB_BYTES_PER_LINE*8,d0
-    subq.w  #1,d1
-    bra.b   .pdraw
-.no_left
-    ; check mask to the right
-;;    move.w  d0,d4    
-;;    sub.w   #X_MAX-24-X_START,d4
-;;    bmi.b   .pdraw
-;;    lsl.l   d4,d3
-;;    lsl.l   #8,d3
-;;    lsl.l   #8,d3
-.pdraw
-    ; clear left row
-    move.l  previous_pacman_address(pc),a3
-    move.w  #31,d4
-.c
-    clr.b   (a3)
-    clr.b   (-1,a3)
-    add.w   #NB_BYTES_PER_LINE,a3
-    dbf.b   d4,.c
-    
-    move.w  #6,d2   ; 32+16
-    move.w  #32,d4
-
-    bsr blit_plane_any
-
-    move.l  a1,previous_pacman_address    
-    ; now hack to clip zones without reducing blit width
-    ; this is super-dirty I know. But this is not a game engine...
-    
-    lea screen_data+SCREEN_PLANE_SIZE+(Y_PAC_ANIM-20)*NB_BYTES_PER_LINE+X_MAX/8-1,a3
-    move.w  #31,d4
-
-    bsr wait_blit
-
-.clip
-    clr.l   (a3)
-    add.w   #NB_BYTES_PER_LINE,a3
-    dbf.b   d4,.clip    
-    
-    lea screen_data+SCREEN_PLANE_SIZE+(Y_PAC_ANIM-20)*NB_BYTES_PER_LINE-4,a3
-    move.w  #31,d4
-.clip2
-    clr.l   (a3)
-    add.w   #NB_BYTES_PER_LINE,a3
-    dbf.b   d4,.clip2
-    
-    rts
         
 ; < d0.w: x
 ; < d1.w: y
