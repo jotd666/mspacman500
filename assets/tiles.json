@@ -1,37 +1,37 @@
 {
 "source":"sprites.png",
-"x_offset":2,
+"x_offset":0,
 "y_offset":0,
  "width" : 16,
  "height" : 16,
  "horizontal" : true,
  "objects":[{
    "name":"pac_right",
-   "frames":2,
+   "frames":3,
    "start_x":0,
    "start_y":0
  },
  {
    "name":"pac_left",
-   "frames":2,
+   "frames":3,
    "start_x":0,
    "start_y":16
  },
 {
    "name":"pac_lives",
    "frames":1,
-   "start_x":128,
-   "start_y":16
+   "start_x":0,
+   "start_y":0
  },
  {
    "name":"pac_up",
-   "frames":2,
+   "frames":3,
    "start_x":0,
    "start_y":32
  },
 {
    "name":"pac_down",
-   "frames":2,
+   "frames":3,
    "start_x":0,
    "start_y":48
  },
@@ -48,33 +48,7 @@
    "start_x":0,
    "start_y":64
   },
-     {
-  "name":"red_ghost_with_leg",
-   "frames":2,
-   "start_x":128,
-   "start_y":112
-  },
-    {
-  "name":"red_ghost_repaired",
-  "sprite_number":0,
-   "frames":2,
-   "start_x":160,
-   "start_y":112
-  },
-     {
-  "name":"red_ghost_naked",
-   "frames":2,
-   "start_x":128,
-   "start_y":128,
-   "width":32
-  },
-    {
-  "name":"red_ghost_drape",
-  "sprite_number":0,
-   "frames":5,
-   "start_x":128,
-   "start_y":96
-  },
+ 
   {
    "name":"frightened_ghost_blue",
    "sprite_palette":[[0,0,0],[32,32,240],[240,176,176],[240,0,0]],
@@ -138,26 +112,13 @@
    "start_x":0,
    "start_y":144
  },
-  {
-  "name":"bonus_score_200",
-   "frames":1,
-   "start_x":84,
-   "start_y":144
- },
 
  {
    "name":"bonus",
-   "frames":8,
-   "start_x":32,
+   "frames":7,
+   "start_x":48,
    "start_y":48
-  },
-  {
-   "name":"big_pac",
-   "frames":3,
-   "start_x":32,
-   "start_y":16,
-   "width":32,
-   "height":32
   }
+
  ]
 }

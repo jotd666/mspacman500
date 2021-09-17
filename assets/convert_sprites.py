@@ -21,7 +21,6 @@ def process_mazes():
 
             # now the big time saver: detect maze walls & dots from MAME screenshots
             img = Image.new("RGB",(maze.size[0],maze.size[1]-24-16))
-            print(maze.size[1]-24-16)
             img.paste(maze,(0,-24))
             # pixel 0,5 or 47 holds the outline color of the maze wall for all mazes
             for y in [5,47]:
@@ -117,7 +116,7 @@ def process_mazes():
 game_palette_txt = """
      dc.w	$0000,$022f,$0ff0,$0f00     ; black (0), maze outline, pac yellow (2), maze fill
      dc.w   $FBB,$00ff,$04ba,$0F00,$0FFF,$0fbf    ; dot pink (4), whatever, red (replaces old color), whatever, white (8), pen gate pink (8+1)
-	 dc.w	$0ddf,$0edf,$0fb5,$0fbb,$0F0,$04bf
+	 dc.w	$fc2,$0edf,$0fb5,$0fbb,$0F0,$d94     ; $04bf $0ddf
      ; sprite palette 16-32
      ; red ghost
      dc.w	$0000,$0f00,$022f,$0edf
@@ -297,8 +296,8 @@ def process_fonts():
             namei = "{}_{}".format(name,i) if nb_frames != 1 else name
             bitplanelib.palette_image2raw(img,"../{}/{}.bin".format(sprites_dir,name_dict.get(namei,namei)),used_palette,palette_precision_mask=0xF0)
 
-process_mazes()
+#process_mazes()
 
-#process_tiles()
+process_tiles()
 
 #process_fonts()
