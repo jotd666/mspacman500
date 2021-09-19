@@ -7,36 +7,42 @@
  "horizontal" : true,
  "objects":[{
    "name":"pac_right",
+   "generate_mask":true,
    "frames":3,
    "start_x":0,
    "start_y":0
  },
  {
    "name":"pac_left",
+   "generate_mask":true,
    "frames":3,
    "start_x":0,
    "start_y":16
  },
 {
    "name":"pac_lives",
+   "generate_mask":false,
    "frames":1,
    "start_x":0,
    "start_y":0
  },
  {
    "name":"pac_up",
+   "generate_mask":true,
    "frames":3,
    "start_x":0,
    "start_y":32
  },
 {
    "name":"pac_down",
+   "generate_mask":true,
    "frames":3,
    "start_x":0,
    "start_y":48
  },
 {
    "name":"pac_dead",
+   "generate_mask":true,
    "frames":12,
    "start_x":32,
    "start_y":0
@@ -115,6 +121,7 @@
 
  {
    "name":"bonus",
+   "generate_mask":true,
    "frames":7,
    "start_x":48,
    "start_y":48

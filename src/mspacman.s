@@ -122,6 +122,9 @@ FOURTH_INTERMISSION_LEVEL = 13
 ; uncomment to test intermission screen
 ;;INTERMISSION_TEST = THIRD_INTERMISSION_LEVEL
 
+; if set skips intro and start music, game starts almost immediately
+DIRECT_GAME_START
+
 ; temp if nonzero, then records game input, intro music doesn't play
 ; and when one life is lost, blitzes and a0 points to move record table
 ; a1 points to the end of the table
@@ -386,10 +389,7 @@ intro:
 
     ; small random to change ghosts names from time to time (1 out of 5 after a game over)
     lea character_text_table_en(pc),a0
-    cmp.w    #1,vbl_counter
-    bne.b   .en
-    lea character_text_table_jp(pc),a0
-.en
+
     move.l  a0,character_text_table
     
     bsr stop_background_loop
@@ -409,8 +409,10 @@ intro:
     move.w #$83E0,dmacon(a5)
     move.w #INTERRUPTS_ON_MASK,intena(a5)    ; enable level 6!!
     
-
-
+    IFD DIRECT_GAME_START
+    bra.b   .restart
+    ENDC
+    
 .intro_loop    
     cmp.w   #STATE_INTRO_SCREEN,current_state
     bne.b   .out_intro
@@ -685,12 +687,15 @@ init_level:
     move.w  maze_number(pc),d0  ; computed from level number TODO
     ; maze_dot_table_read_only,maze_wall_table,maze_colors,maze_bitmap
     lsl.w   #4,d0   ; *16
-    lea     maze_table(pc),a0
+    lea     maze_table,a0
     lea (a0,d0.w),a0
     move.l  (a0)+,dot_table_read_only
     move.l  (a0)+,maze_wall_table
     move.l  (a0)+,maze_colors
-    move.l  (a0)+,maze_bitmap
+    move.l  (a0)+,D0
+    move.l  d0,maze_bitmap_plane_1
+    add.l  #NB_BYTES_PER_MAZE_LINE*NB_LINES,d0
+    move.l  d0,maze_bitmap_plane_2
     
     ; level
     move.w  level_number,d2
@@ -1181,8 +1186,10 @@ init_player
     IFD    RECORD_INPUT_TABLE_SIZE
     move.l  #ORIGINAL_TICKS_PER_SEC,d0 ; no start music when recording
     ELSE
+    IFND     DIRECT_GAME_START
     tst.b   demo_mode
     beq.b   .no_demo
+    ENDC
     move.l  #ORIGINAL_TICKS_PER_SEC,d0 ; no start music when demo
 .no_demo
     ENDC
@@ -1469,9 +1476,7 @@ draw_ghosts:
 .normal
     lea ghosts(pc),a0
     moveq.l #3,d7
-    tst.w   draw_ghost_as_repaired
-    beq.b   .gloop
-    moveq.l #0,d7   ; draw only first ghost
+
 .gloop
     move.w  xpos(a0),d0
     ; too on the right, don't draw sprite
@@ -1511,11 +1516,7 @@ draw_ghosts:
     lea     palette(a0),a2      ; normal ghost colors
 
     move.l  frame_table(a0),a1
-    tst.w   draw_ghost_as_repaired
-    beq.b   .no_repaired
-    ; special case intermission screen
-    lea     repaired_frame_table(pc),a1
-.no_repaired    
+
     move.w  frame(a0),d2
     lsr.w   #2,d2   ; 8 divide to get 0,1, divide by 4 then mask after adding direction
     cmp.w   #MODE_FRIGHT,d3
@@ -1723,7 +1724,7 @@ PLAYER_ONE_Y = 102-14
     bcc.b   .after_draw
 .ready_end    
     bsr draw_ghosts
-    bsr draw_pacman
+    bsr draw_mspacman
 .after_draw
         
     ; timer not running, animate
@@ -2069,7 +2070,7 @@ draw_intro_screen
     bcs.b   .dont_draw_characs
     ; blit pacman
     bsr draw_ghosts
-    bsr draw_pacman
+    bsr draw_mspacman
     
     ; animate dots
     bsr animate_power_pills
@@ -2225,12 +2226,16 @@ draw_last_life:
     rts
     
 draw_lives:
-    lea	screen_data+SCREEN_PLANE_SIZE,a1
+    moveq.w #3,d7
+    lea	screen_data,a1
+.cloop
     move.l #NB_BYTES_PER_MAZE_LINE*8,d0
     moveq.l #0,d1
     move.l  #8,d2
     bsr clear_plane_any
-
+    add.w   #SCREEN_PLANE_SIZE,a1
+    dbf d7,.cloop
+    
     lea pac_lives,a0
     move.b  nb_lives(pc),d7
     ext     d7
@@ -2239,10 +2244,9 @@ draw_lives:
     move.w #NB_BYTES_PER_MAZE_LINE*8,d3
     moveq.l #-1,d2  ; mask
 .lloop
-    lea	screen_data+SCREEN_PLANE_SIZE,a1
     move.w  d3,d0
     moveq.l #0,d1
-    bsr blit_plane
+    bsr blit_4_planes
     add.w   #16,d3
     dbf d7,.lloop
 .out
@@ -2367,13 +2371,11 @@ draw_maze:
     lea screen_data,a1
 
     ; copy maze data in bitplanes
-    move.l maze_bitmap(pc),a0
+    move.l maze_bitmap_plane_1(pc),a0
     bsr .copyplane
     
     lea screen_data+SCREEN_PLANE_SIZE,a1
-    ;move.l maze_bitmap(pc),a0
-    ;add.l  #6944,a0
-   
+
 .copyplane
     move.w  #NB_LINES-1,d0
 .copyline
@@ -3226,77 +3228,11 @@ draw_intermission_screen_level_5:
     tst.w   state_timer
     beq.b   .outd
     
-    ; place nail
-    lea  player(pc),a2
-    move.w  #X_MAX/2,d0
-    move.w  ypos(a2),d1
-    sub.w   #NAIL_DRAPE_Y_OFFSET,d1
-    bsr     store_sprite_pos
-    
-    tst.w   show_leg
-    bne.b   .show_torn_drape
-    
-    move.w  nail_timer(pc),d1
-    lsr.w   #3,d1
-    cmp.w   #4,d1
-    bcc.b   .no_drape_update
-    add.w   d1,d1
-    add.w   d1,d1
-    lea red_ghost_drape_table(pc),a1
-    move.l  (a1,d1.w),a0        ; nail/drape frame
-    bra.b   .ssp
-.show_torn_drape
-    lea torn_drape,a0
-.ssp
-    move.l  d0,(a0)
 
-    ; use sprite 1 for nail/drape
-    lea     nail_sprite,a1
-    move.l  a0,d0
-    move.w  d0,(6,a1)
-    swap    d0
-    move.w  d0,(2,a1)
-.no_drape_update
-    
-    ; show_leg
-    
-    tst.w   show_leg
-    bne.b   .show_leg_sprite
-    bsr draw_ghosts
-    bra.b   .cont
-.show_leg_sprite
-    bsr hide_ghost_sprites
-    lea ghosts(pc),a2
-    move.w  xpos(a2),d0
-    move.w  ypos(a2),d1
-    ; center => top left
-    sub.w  #10+X_START,d0
-    sub.w  #8+Y_START,d1
-    ; blit
-    lea red_ghost_with_leg_left,a0
-    cmp.w   #1,show_leg
-    beq.b   .ok
-    lea red_ghost_with_leg_up,a0
-    
-.ok
-    bsr blit_4_planes
-    
-.cont
-    tst.w   xpos(a2)
-    bmi.b   .outd
-    bsr draw_pacman
 .outd    
     rts
 
-draw_ghost_as_repaired:
-    dc.w    0
     
-; only left (both first values aren't used)
-repaired_frame_table
-    dc.l    repaired_0,repaired_1,repaired_0,repaired_1
-    
-red_ghost_drape_table:
-        dc.l    nail,red_ghost_drape_1,red_ghost_drape_2,red_ghost_drape_3
 
 update_intermission_screen_level_5
     tst.w   state_timer
@@ -3415,7 +3351,7 @@ draw_intermission_screen_level_9:
     cmp.w   #LEFT,direction(a2)
     bne.b   .right
     bsr draw_ghosts
-    bsr draw_pacman
+    bsr draw_mspacman
     bra.b   .outd
 .right
     bsr hide_ghost_sprites
@@ -3424,18 +3360,7 @@ draw_intermission_screen_level_9:
     ; center => top left
     sub.w  #8+Y_START,d1
     ; blit
-    lea red_ghost_naked_0,a0
-    cmp.w   #8,frame(a2)
-    bcc.b   .dn
-    lea red_ghost_naked_1,a0
-.dn
-    tst.w   d0
-    bpl.b   .xpositive
-    ; cheat
-    add.w   #NB_BYTES_PER_LINE*8,d0
-    subq.w  #1,d1    
-.xpositive
-    bsr .blit_naked_ghost
+
     bsr wait_blit
     ; clip start/end (too lazy to use masks here...)
     lea     screen_data+X_MAX/8-2+Y_PAC_ANIM*NB_BYTES_PER_LINE,a1
@@ -3479,7 +3404,6 @@ draw_intermission_screen_level_9:
 update_intermission_screen_level_9
     tst.w   state_timer
     bne.b   .no_pac_demo_anim_init
-    move.w  #1,draw_ghost_as_repaired
     
     lea music_2_sound(pc),a0
     bsr play_fx
@@ -3568,7 +3492,7 @@ update_intermission_screen_level_9
     cmp.w   #$2B0,state_timer        ; end of second repeat of music
     bne.b   .no_end
     clr.w   state_timer
-    clr.w   draw_ghost_as_repaired
+
     move.w  #STATE_PLAYING,current_state
 .no_end
     rts
@@ -3586,7 +3510,7 @@ draw_intermission_screen_level_2:
     ;;bsr draw_big_pacman
     bra.b   .outd
 .small
-    bsr draw_pacman
+    bsr draw_mspacman
 .outd    
     rts
     
@@ -5059,7 +4983,7 @@ level_completed:
     move.w  #STATE_LEVEL_COMPLETED,current_state
     rts
     
-draw_pacman:
+draw_mspacman:
     lea     player(pc),a2
     tst.w  ghost_eaten_timer
     bmi.b   .normal_pacdraw
@@ -5082,7 +5006,7 @@ draw_pacman:
     add.w   d0,d0
     move.l  (a0,d0.w),a0
 .pacblit
-    lea	screen_data+SCREEN_PLANE_SIZE*2,a1
+    lea	screen_data,a1
     move.w  xpos(a2),d0
     move.w  ypos(a2),d1
     ; center => top left
@@ -5108,13 +5032,31 @@ draw_pacman:
 .pdraw
     ; first roughly clear some pacman zones that can remain. We don't test the directions
     ; just clear every possible pixel that could remain whatever the direction was/is
-    bsr wait_blit   ; (just in case the blitter didn't finish writing pacman)
-    move.l  previous_pacman_address(pc),a3
-    REPT    18
-    clr.l   (NB_BYTES_PER_LINE*(REPTN-1),a3)
-    ENDR
+    
+    ;bsr wait_blit   ; (just in case the blitter didn't finish writing pacman)
+    ;move.l  previous_pacman_address(pc),a3
+    ;REPT    18
+    ;clr.l   (NB_BYTES_PER_LINE*(REPTN-1),a3)
+    ;ENDR
 
-    bsr blit_plane
+; < A0: data (16x16)
+; < A1: plane
+; < A2: background to mix with cookie cut
+; < A3: source mask for cookie cut (16x16)
+; < D0: X
+; < D1: Y
+; < D2: blit mask
+
+; trashes: D0-D1
+; returns: A1 as start of destination (A1 = orig A1+40*D1+D0/8)
+
+    lea (64*4,a0),a3    ; mask follows the 4 data bitplanes
+    move.l  maze_bitmap_plane_1(pc),a2
+    move.l  a1,a6
+    move.w d0,d3
+    move.w d1,d4
+    bsr blit_plane_cookie_cut
+    
     ; A1 is start of dest, use it to clear upper part and lower part
     ; and possibly shifted to the left/right
 ;;    move.l  a1,d0
@@ -5123,7 +5065,25 @@ draw_pacman:
 ;;    subq.l  #1,a1   ; even address, always!
 ;;.ok
     move.l  a1,previous_pacman_address
-    rts
+
+    move.w d3,d0
+    move.w d4,d1
+    lea (SCREEN_PLANE_SIZE,a6),a1
+    lea (64,a0),a0    ; next plane for bitmap
+    move.l  maze_bitmap_plane_2(pc),a2
+    bsr blit_plane_cookie_cut
+    ;;bsr blit_plane
+    
+    move.w d3,d0
+    move.w d4,d1
+    ; no cookie cut for the rest of the planes
+    lea (SCREEN_PLANE_SIZE*2,a6),a1
+    lea (64,a0),a0    ; next plane for bitmap
+    ; no need to blit data from plane 4: mspacman colors fit into the first 3
+    ; planes, saves some bandwidth!!
+    bra blit_plane
+
+
 
         
 ; < d0.w: x
@@ -5260,6 +5220,29 @@ blit_plane
     movem.l (a7)+,d2-d4/a2-a5
     rts
     
+; what: blits 16x16 data on one plane, cookie cut
+; args:
+; < A0: data (16x16)
+; < A1: plane
+; < A2: background (maze) to mix with cookie cut
+; < A3: source mask for cookie cut (16x16)
+; < D0: X
+; < D1: Y
+; < D2: blit mask
+; < D3: height
+; trashes: D0-D1
+; returns: A1 as start of destination (A1 = orig A1+40*D1+D0/8)
+
+blit_plane_cookie_cut
+    movem.l d2-d7/a2-a5,-(a7)
+    lea $DFF000,A5
+	move.l d2,bltafwm(a5)	;masking of first/last word    
+    move.w  #4,d2       ; 16 pixels + 2 shift bytes
+    move.w  #16,d3      ; 16 pixels height
+    bsr blit_plane_any_internal_cookie_cut
+    movem.l (a7)+,d2-d7/a2-a5
+    rts
+    
 ; what: blits (any width)x(any height) data on one plane
 ; args:
 ; < A0: data (width x height)
@@ -5337,6 +5320,101 @@ blit_plane_any_internal:
 	move.l a1,bltdpt(a5)	;destination top left corner
 	move.w  d4,bltsize(a5)	;rectangle size, starts blit
     rts
+
+
+; quoting mcgeezer:
+; "You have to feed the blitter with a mask of your sprite through channel A,
+; you feed your actual bob bitmap through channel B,
+; and you feed your pristine background through channel C."
+
+; < A5: custom
+; < D0,D1: x,y
+; < A0: source
+; < A1: destination
+; < A2: background to mix with cookie cut
+; < A3: source mask for cookie cut
+; < D2: width in bytes (inc. 2 extra for shifting)
+; < D3: height
+; blit mask set
+; returns: start of destination in A1 (computed from old A1+X,Y)
+; trashes: nothing
+
+blit_plane_any_internal_cookie_cut:
+    movem.l d0-d6/a4,-(a7)
+    ; pre-compute the maximum of shit here
+    move.w  d3,d4
+    lea mul40_table(pc),a4
+    add.w   d1,d1
+    move.w  d1,d6   ; save it
+    beq.b   .d1_zero    ; optim
+    move.w  (a4,d1.w),d1
+    swap    d1
+    clr.w   d1
+    swap    d1
+.d1_zero
+    move.l  #$0fca0000,d5    ;B+C-A->D cookie cut   
+
+    move    d0,d3
+    beq.b   .d0_zero
+    and.w   #$F,D3
+    and.w   #$1F0,d0
+    lsr.w   #3,d0
+
+    lsl.l   #8,d3
+    lsl.l   #4,d3
+    or.w    d3,d5            ; add shift to mask (bplcon1)
+    swap    d3
+    clr.w   d3
+    or.l    d3,d5            ; add shift
+    
+    move.w  d0,d3
+    add.w   d0,d1
+    
+.d0_zero    
+    add.l   d1,a1       ; plane position
+
+    lea mul28_table(pc),a4
+    ;;beq.b   .d1_zero    ; optim
+    move.w  (a4,d6.w),d1
+    swap    d1
+    clr.w   d1
+    swap    d1
+    add.w   d3,a2       ; X
+;;.d1_zero    
+    ; compute offset for maze plane
+    add.l   d1,a2       ; Y maze plane position
+
+	move.w #NB_BYTES_PER_LINE,d0
+    sub.w   d2,d0       ; blit width
+	move.w #NB_BYTES_PER_MAZE_LINE,d1
+    sub.w   d2,d1       ; blit width
+
+    lsl.w   #6,d4
+    lsr.w   #1,d2
+    add.w   d2,d4       ; blit height
+
+    ; always the same settings (ATM)
+	move.w #0,bltamod(a5)		;A modulo=bytes to skip between lines
+	move.w #0,bltbmod(a5)		;A modulo=bytes to skip between lines
+	move.l d5,bltcon0(a5)	; sets con0 and con1
+
+    move.w  d1,bltcmod(a5)	;C modulo (maze width != screen width)
+    move.w  d0,bltdmod(a5)	;D modulo
+
+    ; now just wait for blitter ready to write all registers
+	bsr	wait_blit
+    
+    ; blitter registers set
+	move.l a3,bltapt(a5)	;source graphic top left corner (mask)
+	move.l a0,bltbpt(a5)	;source graphic top left corner
+	move.l a2,bltcpt(a5)	;pristine background
+	move.l a1,bltdpt(a5)	;destination top left corner
+	move.w  d4,bltsize(a5)	;rectangle size, starts blit
+    
+    movem.l (a7)+,d0-d6/a4
+    rts
+
+
 
 ; what: blits 16(32)x16 data on 4 planes (for bonuses), full mask
 ; args:
@@ -5794,7 +5872,9 @@ maze_wall_table:
     dc.l    0
 maze_colors
     dc.l    0
-maze_bitmap
+maze_bitmap_plane_1
+    dc.l    0
+maze_bitmap_plane_2
     dc.l    0
 ; 0: level 1
 level_number:
@@ -5869,8 +5949,6 @@ fruit_score     ; must follow score_table
 loop_array:
     dc.l    0,0,0,0
     
-big_pac_table:
-    dc.l    big_pac_2,big_pac_2,big_pac_0,big_pac_1,big_pac_1,big_pac_0
 
 player_kill_anim_table:
     REPT    NB_TICKS_PER_SEC/2
@@ -5931,7 +6009,7 @@ PAC_ANIM_TABLE:MACRO
 pac_anim_\1
     ; original shows 1 frame each 1/30s. We can't do that here but we
     ; can shorten some frames
-    dc.l    pac_dead,pac_dead,pac_\1_0,pac_\1_1,pac_\1_1,pac_\1_0
+    dc.l    pac_\1_2,pac_\1_2,pac_\1_0,pac_\1_1,pac_\1_1,pac_\1_0
 pac_anim_\1_end
     ENDM
     
@@ -6026,32 +6104,14 @@ ten_pts_string:
     even
 character_text_table
     dc.l    0
-character_text_table_jp
-    dc.l    oiake,akabei,$F00,0
-    dc.l    machibuse,pinky,$0fbf,0
-    dc.l    kimagure,aosuke,$00ff,0
-    dc.l    otobuke,guzuta,$0fb5,0
 character_text_table_en
     dc.l    shadow,blinky,$F00,0
     dc.l    speedy,pinky,$0fbf,0
     dc.l    bashful,inky,$00ff,0
     dc.l    pokey,clyde,$0fb5,0
-oiake:
-    dc.b    "OIKAKE----",0
-akabei:
-    dc.b    '"AKABEI"',0
-machibuse:
-    dc.b    "MACHIBUSE--",0
+
 pinky:
     dc.b    '"PINKY"',0
-kimagure:
-    dc.b    "KIMAGURE--",0
-aosuke:
-    dc.b    '"AOSUKE"',0
-otobuke:
-    dc.b    "OTOBUKE---",0
-guzuta:
-    dc.b    '"GUZUTA"',0
     
 shadow:
     dc.b    "-SHADOW    ",0
@@ -6067,11 +6127,12 @@ inky:
 pokey:
     dc.b    "-POKEY     ",0
 clyde:
-    dc.b    '"CLYDE"',0
+    dc.b    '"SUE"',0
 
     even
 
     MUL_TABLE   40
+    MUL_TABLE   28
 
 square_table:
 	rept	256
@@ -6537,7 +6598,6 @@ orange_ghost:        ; needed to unlock elroy mode
     ds.b    Ghost_SIZEOF
 
 
-    include "maze_data.s"       ; generated by "convert_sprites.py" python script
     
 ; BSS --------------------------------------
     SECTION  S2,BSS
@@ -6624,6 +6684,7 @@ end_color_copper:
    dc.w intreq,$8010            ; generate copper interrupt
     dc.l    -2
 
+    include "maze_data.s"       ; generated by "convert_sprites.py" python script
 
 
 
@@ -6639,29 +6700,31 @@ ghost_bob_table:
     incbin  "cyan_ghost_bob.bin"
     incbin  "orange_ghost_bob.bin"
 
-big_pac_0
-    incbin  "big_pac_0.bin"
-big_pac_1
-    incbin  "big_pac_1.bin"
-big_pac_2
-    incbin  "big_pac_2.bin"
-    
+
 pac_left_0
     incbin  "pac_left_0.bin"
 pac_left_1    
     incbin  "pac_left_1.bin"
+pac_left_2    
+    incbin  "pac_left_2.bin"
 pac_right_0
     incbin  "pac_right_0.bin"
 pac_right_1    
     incbin  "pac_right_1.bin"
+pac_right_2    
+    incbin  "pac_right_2.bin"
 pac_up_0
     incbin  "pac_up_0.bin"
 pac_up_1
     incbin  "pac_up_1.bin"
+pac_up_2
+    incbin  "pac_up_2.bin"
 pac_down_0
     incbin  "pac_down_0.bin"
 pac_down_1
     incbin  "pac_down_1.bin"
+pac_down_2
+    incbin  "pac_down_2.bin"
 pac_dead
     ; each has 64 bytes
     incbin  "pac_dead_0.bin"
@@ -6699,16 +6762,7 @@ bonus_scores:
     incbin  "bonus_scores_2.bin"    ; 500
     incbin  "bonus_scores_3.bin"    ; 700
 
-red_ghost_with_leg_left
-    incbin  "red_ghost_with_leg_0.bin"
-red_ghost_with_leg_up
-    incbin  "red_ghost_with_leg_1.bin"
-    
-red_ghost_naked_0
-    incbin  "red_ghost_naked_0.bin"
-red_ghost_naked_1
-    incbin  "red_ghost_naked_1.bin"
-    even
+
 
     
 
@@ -6824,35 +6878,6 @@ DECL_GHOST:MACRO
 
 ; special sprites for intermissions
 
-
-repaired_0
-    dc.l    0
-    incbin  "red_ghost_repaired_0.bin"
-    dc.l    0
-repaired_1
-    dc.l    0
-    incbin  "red_ghost_repaired_1.bin"
-    dc.l    0
-nail:
-    dc.l    0
-    incbin  "red_ghost_drape_0.bin"
-    dc.l    0
-torn_drape:
-    dc.l    0
-    incbin  "red_ghost_drape_4.bin"
-    dc.l    0
-red_ghost_drape_1:
-    dc.l    0
-    incbin  "red_ghost_drape_1.bin"
-    dc.l    0
-red_ghost_drape_2:
-    dc.l    0
-    incbin  "red_ghost_drape_2.bin"
-    dc.l    0
-red_ghost_drape_3:
-    dc.l    0
-    incbin  "red_ghost_drape_3.bin"
-    dc.l    0
     
 score_200:
     dc.l    0

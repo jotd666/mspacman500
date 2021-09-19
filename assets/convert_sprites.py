@@ -115,7 +115,7 @@ def process_mazes():
 # so they can be drawn with just one plane (pacman, white fonts)
 game_palette_txt = """
      dc.w	$0000,$111,$0222,$0333     ; black (0), dot (dummy, dynamic 1), maze outline (2 dummy, dynamic), maze fill (dummy, dynamic 3)
-     dc.w   $0ff0,$00ff,$04ba,$0F00,$0FFF,$0fbf    ; pac yellow (4), whatever, red, whatever, white (8), pen gate pink (8+1)
+     dc.w   $0ff0,$00ff,$022f,$0F00,$0FFF,$0fbf    ; pac yellow (4), whatever, red, blue (for mspac hair/eye), white (8), pen gate pink (8+1)
 	 dc.w	$fc2,$0edf,$0fb5,$0fbb,$0F0,$d94     ; whatever (mostly bonus items colors)
      ; sprite palette 16-32
      ; red ghost
@@ -131,6 +131,7 @@ game_palette_txt = """
 
 game_palette = bitplanelib.palette_dcw2palette(game_palette_txt)
 bitplanelib.palette_dump(game_palette,r"../src/palette.s",as_copperlist=False)
+game_palette_16 = game_palette[0:16]
 
 outdir = "dumps"
 
@@ -164,6 +165,8 @@ def process_tiles():
     for object in tiles["objects"]:
         if object.get("ignore"):
             continue
+        generate_mask = object.get("generate_mask",False)
+
         blit_pad = object.get("blit_pad",True)
         name = object["name"]
         start_x = object["start_x"]+x_offset
@@ -217,11 +220,13 @@ def process_tiles():
                 img = Image.new("RGB",(img_x,cropped_img.size[1]))
                 img.paste(cropped_img)
                 # if 1 plane, pacman frames, save only 1 plane, else save all 4 planes
-                used_palette = p if len(p)==2 else game_palette
+                one_plane = len(p)==2
+                used_palette = p if one_plane else game_palette_16
 
                 namei = "{}_{}".format(name,i) if nb_frames!=1 else name
 
-                bitplanelib.palette_image2raw(img,"../{}/{}.bin".format(sprites_dir,name_dict.get(namei,namei)),used_palette,palette_precision_mask=0xF0)
+                bitplanelib.palette_image2raw(img,"../{}/{}.bin".format(sprites_dir,name_dict.get(namei,namei)),used_palette,
+                palette_precision_mask=0xF0,generate_mask=generate_mask)
 
 def process_fonts():
     json_file = "fonts.json"
