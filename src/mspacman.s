@@ -1821,11 +1821,11 @@ handle_ready_text
     bne.b   .no_ready_clr
     clr.w   ready_display_message
     ; remove "READY!" message
-    lea	screen_data+SCREEN_PLANE_SIZE,a1
     move.w  #88,d0
     move.w  #136,d1
-    move.w  #14,d2   ; 96
-    bsr clear_plane_any
+    move.w  #$0ff0,d2
+    lea ready_clear_string(pc),a0
+    bsr write_color_string
 .no_ready_clr    
     tst.w   ready_timer
     bmi.b   .ready_off
@@ -5006,7 +5006,6 @@ draw_mspacman:
     add.w   d0,d0
     move.l  (a0,d0.w),a0
 .pacblit
-    lea	screen_data,a1
     move.w  xpos(a2),d0
     move.w  ypos(a2),d1
     ; center => top left
@@ -5033,25 +5032,56 @@ draw_mspacman:
     ; first roughly clear some pacman zones that can remain. We don't test the directions
     ; just clear every possible pixel that could remain whatever the direction was/is
     
-    ;bsr wait_blit   ; (just in case the blitter didn't finish writing pacman)
-    ;move.l  previous_pacman_address(pc),a3
-    ;REPT    18
-    ;clr.l   (NB_BYTES_PER_LINE*(REPTN-1),a3)
-    ;ENDR
+    bsr wait_blit   ; (just in case the blitter didn't finish writing pacman)
+    ; restore dots around mspacman if not eaten
+    ;bsr restore_dots
 
-; < A0: data (16x16)
-; < A1: plane
-; < A2: background to mix with cookie cut
-; < A3: source mask for cookie cut (16x16)
-; < D0: X
-; < D1: Y
-; < D2: blit mask
+    ; erase is optimized. Mrs pacman uses 3 colors on 3 planes, but the blue color
+    ; is (on purpose) on the same level as the second maze plane. Since the color appears
+    ; only inside mrs pacman bob, no need to clear it, the next blit does the job
+    ; so now no need to be careful when deleting mrs pacman other planes or partially
+    ; redraw the maze or whatever: just bruteforce clear the planes
+    move.l  previous_pacman_address(pc),a3
+    
+    move.w  previous_pacman_vspeed(pc),d3
+    beq.b   .no_verase
+    tst.w   d3
+    bpl.b   .erase_down
+    REPT    4
+    clr.l  (NB_BYTES_PER_LINE*(16+REPTN)+SCREEN_PLANE_SIZE,a3)
+    clr.l  (NB_BYTES_PER_LINE*(16+REPTN)+SCREEN_PLANE_SIZE*2,a3)
+    ENDR  
+    bra.b   .no_verase
+.erase_down
+    REPT    4
+    clr.l   (NB_BYTES_PER_LINE*(REPTN-4)+SCREEN_PLANE_SIZE,a3)
+    clr.l   (NB_BYTES_PER_LINE*(REPTN-4)+SCREEN_PLANE_SIZE*2,a3)
+    ENDR
+    bra.b   .verased
+.no_verase
+    move.w  previous_pacman_hspeed(pc),d3
+    beq.b   .verased
+    bpl.b   .erase_left
+    ; right
+    REPT    3
+    clr.b  (NB_BYTES_PER_LINE*(7+REPTN)+SCREEN_PLANE_SIZE+2,a3)
+    clr.b  (NB_BYTES_PER_LINE*(10+REPTN)+SCREEN_PLANE_SIZE*2+2,a3)
+    ENDR  
+    bra.b   .verased
+.erase_left
+    REPT    3
+    clr.b  (NB_BYTES_PER_LINE*(7+REPTN)+SCREEN_PLANE_SIZE,a3)
+    clr.b  (NB_BYTES_PER_LINE*(10+REPTN)+SCREEN_PLANE_SIZE*2,a3)
+    ENDR  
+    
+.verased
+    move.l  h_speed(a2),previous_pacman_hspeed  ; optim h+v
 
-; trashes: D0-D1
-; returns: A1 as start of destination (A1 = orig A1+40*D1+D0/8)
-
+    lea	screen_data+SCREEN_PLANE_SIZE,a1
+    
     lea (64*4,a0),a3    ; mask follows the 4 data bitplanes
-    move.l  maze_bitmap_plane_1(pc),a2
+    lea (64,a0),a0    ; skip first plane for bitmap
+    move.l  maze_bitmap_plane_2(pc),a2
     move.l  a1,a6
     move.w d0,d3
     move.w d1,d4
@@ -5070,9 +5100,9 @@ draw_mspacman:
     move.w d4,d1
     lea (SCREEN_PLANE_SIZE,a6),a1
     lea (64,a0),a0    ; next plane for bitmap
-    move.l  maze_bitmap_plane_2(pc),a2
-    bsr blit_plane_cookie_cut
-    ;;bsr blit_plane
+    ;;move.l  maze_bitmap_plane_2(pc),a2
+    ;;bsr blit_plane_cookie_cut
+    bsr blit_plane
     
     move.w d3,d0
     move.w d4,d1
@@ -5084,8 +5114,78 @@ draw_mspacman:
     bra blit_plane
 
 
+; what: redraws dots around mspacman/moving bonus
+; < D0: X
+; < D1: Y
 
-        
+restore_dots
+    ; don't restore anything on edge x coords
+    cmp.w   #8,d0
+    bcs.b   .no_restore
+    cmp.w   #(NB_BYTES_PER_MAZE_LINE+2)*8,d0
+    bcc.b   .no_restore
+    
+    movem.l d0-d3/a0-a1,-(a7)
+    lea dot_table,a0
+    ; apply x,y offset
+    move.w  d1,d3       ; save y
+    lsr.w   #3,d1       ; 8 divide
+    lsl.w   #5,d1       ; times 32
+    add.w   d1,a0
+    lsr.w   #3,d0   ; 8 divide
+    move.w  d0,d2   ; x-offset in bytes
+    add.w   d0,a0
+    ; look around the center
+    move.b  (1,a0),d0
+    beq.b   .skip_right
+    bsr.b .restore
+.skip_right
+    move.b  (-1,a0),d0
+    beq.b   .skip_left
+    bsr.b .restore
+.skip_left
+    move.b  (NB_BYTES_PER_MAZE_LINE,a0),d0
+    beq.b   .skip_down
+    bsr.b .restore
+.skip_down
+    move.b  (-NB_BYTES_PER_MAZE_LINE,a0),d0
+    beq.b   .skip_up
+    bsr.b .restore
+.skip_up
+
+    movem.l (a7)+,d0-d3/a0-a1
+.no_restore
+    rts
+.restore
+    lea screen_data+DOT_PLANE_OFFSET,a1
+    add.w   d2,a1
+    lea     mul40_table(pc),a0
+    add.w   d3,d3
+    add.w  (a0,d3.w),a1
+    
+    tst.b   d0
+    bmi.b   .clear
+    clr.b   (a1)
+    clr.b   (NB_BYTES_PER_LINE,a1)
+    clr.b   (NB_BYTES_PER_LINE*2,a1)
+    move.b  #%0011000,(NB_BYTES_PER_LINE*3,a1)
+    move.b  #%0011000,(NB_BYTES_PER_LINE*4,a1)
+    clr.b   (NB_BYTES_PER_LINE*5,a1)
+    clr.b   (NB_BYTES_PER_LINE*6,a1)
+    clr.b   (NB_BYTES_PER_LINE*7,a1)
+
+    bra.b   .clear_rest_of_planes
+.clear
+    ; clear dot
+    bsr clear_power_pill
+.clear_rest_of_planes
+    add.l   #SCREEN_PLANE_SIZE,a1
+    bsr clear_power_pill
+    add.l   #SCREEN_PLANE_SIZE,a1
+    bra clear_power_pill
+    ; TODO: with fruit clear other plane too
+    rts
+    
 ; < d0.w: x
 ; < d1.w: y
 ; > d0.L: control word
@@ -5136,10 +5236,11 @@ ye  set ys+16       ; size = 16
 
     
 ; what: checks if x,y has a dot/fruit/power pill 
+; marks the zone to -1 when read (to differentiate with 0 for redraw routine)
 ; args:
 ; < d0 : x (screen coords)
 ; < d1 : y
-; > d0 : nonzero (1,2,3) if collision (dot,power pill,fruit), 0 if no collision
+; > d0 : nonzero (1,2) if collision (dot,power pill), 0 if no collision
 ; trashes: a0,a1,d1
 
 is_on_bonus:
@@ -5151,13 +5252,17 @@ is_on_bonus:
     lsr.w   #3,d0   ; 8 divide
     add.w   d0,a0
     move.b  (a0),d0
+    bmi.b   .cleared
     bne.b   .pill
     rts
 .pill
     ; only once!
-    clr.b   (a0)
+    st.b   (a0)
     rts
-
+.cleared
+    clr.b   d0
+    rts
+    
 ; what: checks if x,y collides with maze 
 ; args:
 ; < d0 : x (screen coords)
@@ -5231,7 +5336,7 @@ blit_plane
 ; < D2: blit mask
 ; < D3: height
 ; trashes: D0-D1
-; returns: A1 as start of destination (A1 = orig A1+40*D1+D0/8)
+; returns: A1 as start of destination (A1 = orig A1+40*D1+D0/16)
 
 blit_plane_cookie_cut
     movem.l d2-d7/a2-a5,-(a7)
@@ -5859,7 +5964,11 @@ fruit_score_index:
 next_ghost_score
     dc.w    0
 previous_pacman_address
-    dc.l    screen_data+2*NB_BYTES_PER_LINE+SCREEN_PLANE_SIZE ; valid address for first clear
+    dc.l    screen_data+2*NB_BYTES_PER_LINE+SCREEN_PLANE_SIZE*2 ; valid address for first clear
+previous_pacman_hspeed
+    dc.w    0
+previous_pacman_vspeed
+    dc.w    0
 ghost_which_counts_dots
     dc.l    0
 score_frame
@@ -6094,6 +6203,8 @@ player_one_string_clear
     dc.b    "          ",0
 ready_string
     dc.b    "READY!",0
+ready_clear_string
+    dc.b    "      ",0
 character_nickname_string:
     dc.b    "CHARACTER / NICKNAME",0
 
