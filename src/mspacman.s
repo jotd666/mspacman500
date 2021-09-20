@@ -5044,70 +5044,55 @@ draw_mspacman:
     move.l  previous_pacman_address(pc),a3
     
     move.w  previous_pacman_vspeed(pc),d3
-    beq.b   .no_verase
-    tst.w   d3
-    bpl.b   .erase_down
+;    beq.b   .no_verase
+;    tst.w   d3
+;    bpl.b   .erase_down
     REPT    4
+    clr.l   (NB_BYTES_PER_LINE*(16+REPTN),a3)
     clr.l  (NB_BYTES_PER_LINE*(16+REPTN)+SCREEN_PLANE_SIZE,a3)
-    clr.l  (NB_BYTES_PER_LINE*(16+REPTN)+SCREEN_PLANE_SIZE*2,a3)
     ENDR  
-    bra.b   .no_verase
+;    bra.b   .no_verase
 .erase_down
     REPT    4
+    clr.l   (NB_BYTES_PER_LINE*(REPTN-4),a3)
     clr.l   (NB_BYTES_PER_LINE*(REPTN-4)+SCREEN_PLANE_SIZE,a3)
-    clr.l   (NB_BYTES_PER_LINE*(REPTN-4)+SCREEN_PLANE_SIZE*2,a3)
     ENDR
-    bra.b   .verased
+;    bra.b   .verased
 .no_verase
     move.w  previous_pacman_hspeed(pc),d3
     beq.b   .verased
     bpl.b   .erase_left
     ; right
-    REPT    3
-    clr.b  (NB_BYTES_PER_LINE*(7+REPTN)+SCREEN_PLANE_SIZE+2,a3)
-    clr.b  (NB_BYTES_PER_LINE*(10+REPTN)+SCREEN_PLANE_SIZE*2+2,a3)
+    REPT    4
+    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+2,a3)
+    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+SCREEN_PLANE_SIZE+2,a3)
     ENDR  
     bra.b   .verased
 .erase_left
-    REPT    3
-    clr.b  (NB_BYTES_PER_LINE*(7+REPTN)+SCREEN_PLANE_SIZE,a3)
-    clr.b  (NB_BYTES_PER_LINE*(10+REPTN)+SCREEN_PLANE_SIZE*2,a3)
+    REPT    4
+    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+1,a3)
+    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+SCREEN_PLANE_SIZE+1,a3)
     ENDR  
     
 .verased
     move.l  h_speed(a2),previous_pacman_hspeed  ; optim h+v
 
-    lea	screen_data+SCREEN_PLANE_SIZE,a1
+    lea	screen_data+SCREEN_PLANE_SIZE*2,a1
     
     lea (64*4,a0),a3    ; mask follows the 4 data bitplanes
-    lea (64,a0),a0    ; skip first plane for bitmap
+    lea (128,a0),a0    ; skip first plane for bitmap
     move.l  maze_bitmap_plane_2(pc),a2
     move.l  a1,a6
     move.w d0,d3
     move.w d1,d4
-    bsr blit_plane_cookie_cut
-    
-    ; A1 is start of dest, use it to clear upper part and lower part
-    ; and possibly shifted to the left/right
-;;    move.l  a1,d0
-;;    btst    #0,d0
-;;    beq.b   .ok
-;;    subq.l  #1,a1   ; even address, always!
-;;.ok
-    move.l  a1,previous_pacman_address
 
-    move.w d3,d0
-    move.w d4,d1
-    lea (SCREEN_PLANE_SIZE,a6),a1
-    lea (64,a0),a0    ; next plane for bitmap
-    ;;move.l  maze_bitmap_plane_2(pc),a2
-    ;;bsr blit_plane_cookie_cut
     bsr blit_plane
+    move.l  a1,previous_pacman_address
     
     move.w d3,d0
     move.w d4,d1
     ; no cookie cut for the rest of the planes
-    lea (SCREEN_PLANE_SIZE*2,a6),a1
+    lea (SCREEN_PLANE_SIZE,a6),a1
     lea (64,a0),a0    ; next plane for bitmap
     ; no need to blit data from plane 4: mspacman colors fit into the first 3
     ; planes, saves some bandwidth!!

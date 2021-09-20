@@ -113,17 +113,14 @@ def process_mazes():
 # palette order matters
 # some key colors are located at a 2**n position
 # or even value so they can be drawn without having to change the first plane (dot)
-# the first plane is somehow good to be left alone most of the time cos it avoids the need
-# to redraw the dots. So MrsPacman colors are even and start from 4 (4,6,10)
-# 8 is reserved for white so score is displayed with just 1 plane (speeds it up)
-#
-# color 4 is inside mrpacman, no need to erase it it will be erase itself (good, as this is the plane interacting
-# with cookie cut with 2nd maze plane)
+# the 2 first planes are somehow good to be left alone most of the time cos it avoids the need
+# to redraw the dots. So MrsPacman colors are even and start from 4 (4,8,12)
+# so no need for cookie cut AT ALL to draw/erase mrspacman (uses 2 upper planes!!)
 
 game_palette_txt = """
      dc.w	$0000,$111,$0222,$0333     ; black (0), dot (dummy, dynamic 1), maze outline (2 dummy, dynamic), maze fill (dummy, dynamic 3)
-     dc.w   $022f,$00ff,$0FFF,$fc2,$0F00,$0fbf   ; blue (for mspac hair/eye) (4), whatever,  white(6), whatever, red (8), pen gate pink (8+1)
-	 dc.w	$0ff0,$0edf,$0fb5,$0fbb,$0F0,$d94     ; pac yellow (10),  whatever (mostly bonus items colors)
+     dc.w   $0ff0,$00ff,$0FFF,$fc2,$0F00,$0fbf   ; blue (for mspac hair/eye) (4), whatever,  white(6), whatever, red (8), pen gate pink (8+1)
+	 dc.w	$0fb5,$0edf,$022f,$0fbb,$0F0,$d94     ; pac yellow (10),  whatever (mostly bonus items colors)
      ; sprite palette 16-32
      ; red ghost
      dc.w	$0000,$0f00,$022f,$0edf
