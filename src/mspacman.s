@@ -123,7 +123,7 @@ FOURTH_INTERMISSION_LEVEL = 13
 ;;INTERMISSION_TEST = THIRD_INTERMISSION_LEVEL
 
 ; if set skips intro and start music, game starts almost immediately
-DIRECT_GAME_START
+;;DIRECT_GAME_START
 
 ; temp if nonzero, then records game input, intro music doesn't play
 ; and when one life is lost, blitzes and a0 points to move record table
@@ -160,6 +160,8 @@ NB_PLANES   = 4
 
 TUNNEL_MASK_X = NB_BYTES_PER_MAZE_LINE*8
 TUNNEL_MASK_Y = OTHERS_YSTART_POS-27
+
+PEN_PLANE_OFFSET = (RED_YSTART_POS-15)*NB_BYTES_PER_LINE+(RED_XSTART_POS-X_START)/8-1
 
 ; messages from update routine to display routine
 MSG_NONE = 0
@@ -410,6 +412,7 @@ intro:
     move.w #INTERRUPTS_ON_MASK,intena(a5)    ; enable level 6!!
     
     IFD DIRECT_GAME_START
+	move.w	#1,cheat_keys	; enable cheat in that mode, we need to test the game
     bra.b   .restart
     ENDC
     
@@ -751,40 +754,44 @@ draw_score:
     lea p1_string(pc),a0
     move.w  #232,d0
     move.w  #16,d1
-    bsr write_string
+    move.w  #$FFF,d2
+    move.w  d2,d4       ; for write numbers
+    bsr write_color_string
     lea score_string(pc),a0
     move.w  #232,d0
     add.w  #8,d1
-    bsr write_string
+    bsr write_color_string
     
     lea high_score_string(pc),a0
     move.w  #232,d0
     move.w  #48,d1
-    bsr write_string
+    bsr write_color_string
     
     ; extra 0
     lea score_string(pc),a0
     move.w  #232,d0
     add.w  #8,d1
-    bsr write_string
+    bsr write_color_string
 
     move.l  score(pc),d2
     bsr     draw_current_score
     
     move.l  high_score(pc),d2
-    bsr     write_high_score
+    bsr     draw_high_score
 
     lea level_string(pc),a0
     move.w  #232,d0
     move.w  #48+24,d1
-    bsr write_string
+    move.w  #$FFF,d2
+    bsr write_color_string
 
     moveq.l #1,d2
     add.w  level_number(pc),d2
     move.w  #232+48,d0
     move.w  #48+24+8,d1
     move.w  #3,d3
-    bra write_decimal_number
+    move.w  #$FFF,d4
+    bra write_color_decimal_number
 
     rts
     
@@ -794,7 +801,8 @@ draw_current_score:
     move.w  #232+16,d0
     move.w  #24,d1
     move.w  #6,d3
-    bra write_decimal_number
+    move.w  #$FFF,d4
+    bra write_color_decimal_number
     
     
 hide_sprites:
@@ -1007,6 +1015,13 @@ init_ghosts
     bsr update_ghost_target
     move.w  #-1,v_speed(a0)
 
+	; elroy mode: red ghost doesn't switch back into scatter
+	lea	ghosts(pc),a0
+    bsr is_elroy
+    tst.w   d0
+    beq.b   .ok_scatter
+    move.w  #MODE_CHASE,mode(a0)
+.ok_scatter:
     rts
     
 .dot_counter_table_level_1
@@ -1212,7 +1227,7 @@ init_player
     
     move.w  #MSG_SHOW,ready_display_message
     
-    bra get_bonus_pac_plane
+    rts
     	    
 
 DEBUG_X = 8     ; 232+8
@@ -1408,9 +1423,6 @@ draw_debug
     lsl.w   #3,d0
     add.w  #DEBUG_X,d0
     clr.l   d2
-    move.w bonus_timer,d2
-    move.w  #3,d3
-    bsr write_decimal_number
 
     bsr ghost_debug
 
@@ -1723,8 +1735,31 @@ PLAYER_ONE_Y = 102-14
     cmp.w   half_first_ready_timer(pc),d0
     bcc.b   .after_draw
 .ready_end    
-    bsr draw_ghosts
+    tst.w   bonus_active
+    beq.b   .no_fruit_erase
+    bsr erase_bonus
+.no_fruit_erase
+    bsr erase_mspacman
+    ; redraw pen gate 3rd plane
+    ; draw pen gate
+    lea	screen_data+PEN_PLANE_OFFSET+SCREEN_PLANE_SIZE*3,a1
+    moveq.l #-1,d0
+    move.b  d0,(a1)
+    move.b  d0,(NB_BYTES_PER_LINE,a1)
+    move.b  d0,(1,a1)
+    move.b  d0,(NB_BYTES_PER_LINE+1,a1)    
+
     bsr draw_mspacman
+	
+	; now draw bonus with full cookie cut
+	; to avoid to overwrite mspacman blit
+    tst.w   bonus_active
+    beq.b   .no_bonus_draw
+    
+    bsr draw_bonus_in_maze
+.no_bonus_draw
+
+    bsr draw_ghosts
 .after_draw
         
     ; timer not running, animate
@@ -1749,22 +1784,7 @@ PLAYER_ONE_Y = 102-14
     add.l  #SCREEN_PLANE_SIZE*3,a1
     bsr clear_plane_any
 .no_bonus_score_disappear    
-    ; bonus
-    cmp.w   #MSG_SHOW,bonus_display_message
-    bne.b   .no_fruit_appear
-    clr.w   bonus_display_message
-    ; blit fruit
-    move.w  #BONUS_X_POS,d0
-    move.w  #BONUS_Y_POS,d1
-    move.w  level_number(pc),d2
-    bsr draw_bonus
-    bra.b   .no_fruit_disappear
-.no_fruit_appear
-    cmp.w   #MSG_HIDE,bonus_display_message
-    bne.b   .no_fruit_disappear
-    clr.w   bonus_display_message
-    bsr clear_bonus
-.no_fruit_disappear
+
     cmp.w   #MSG_SHOW,bonus_score_display_message
     bne.b   .no_bonus_score_appear
     clr.w   bonus_score_display_message
@@ -1795,15 +1815,8 @@ PLAYER_ONE_Y = 102-14
     st.b    highscore_needs_saving
     
     move.l  d2,high_score
-    bsr write_high_score
+    bsr draw_high_score
 .no_score_update
-    tst.w   bonus_timer
-    beq.b   .no_bonus_redraw
-    cmp.w   #BONUS_Y_POS+Y_START+8,player+ypos
-    bne.b   .no_bonus_redraw
-    bsr wait_blit       ; wait for pacman to draw
-    bsr draw_bonus_pac_plane
-.no_bonus_redraw
     tst.b   demo_mode
     beq.b   .no_demo
     ;;bsr wait_blit       ; wait for pacman to draw
@@ -1845,11 +1858,12 @@ handle_ready_text
     rts
     
 ; < D2: highscore
-write_high_score
+draw_high_score
     move.w  #232+16,d0
     move.w  #24+32,d1
     move.w  #6,d3
-    bra write_decimal_number
+    move.w  #$FFF,d4    
+    bra write_color_decimal_number
     
 write_game_over
     move.w  #72,d0
@@ -1957,41 +1971,62 @@ DRAW_GHOST_INFO:MACRO
 draw_start_screen
     bsr hide_sprites
     bsr clear_screen
+	
+	; write mrspacman bob
+    lea pac_lives,a0
+    moveq.l #-1,d2  ; mask
+    move.w  #104,d0
+    move.w #160,d1
+    bsr blit_4_planes
+	
     lea .psb_string(pc),a0
     move.w  #48,d0
-    move.w  #100,d1
+    move.w  #96,d1
     move.w  #$0fb5,d2
     bsr write_color_string
+    
+    ; write midway logo
+    lea     midway,a0
+    move.w  #48,d0
+    move.w #200,d1
+
+    lea $DFF000,A5
+	move.l #-1,bltafwm(a5)	;no masking of first/last word    
+    lea     screen_data,a1
+    moveq.l #3,d6
+.loop
+    movem.l d0-d1/a1,-(a7)
+    move.w  #6,d2       ; 16 pixels + 2 shift bytes
+    move.w  #32,d3      ; height
+    bsr blit_plane_any_internal
+    movem.l (a7)+,d0-d1/a1
+    add.l   #SCREEN_PLANE_SIZE,a1
+    add.l   #192,a0      ; 32 but shifting!
+    dbf d6,.loop
+
+    
     lea .opo_string(pc),a0
     move.w  #48+16,d0
-    move.w  #136,d1
-    move.w  #$00ff,d2
+    move.w  #116,d1
+    move.w  #$0fb5,d2
+	
     bsr write_color_string
     lea .bp1_string(pc),a0
     move.w  #16,d0
-    move.w  #172,d1
-    move.w  #$FBB,d2
+    move.w  #192-24,d1
+    move.w  #$d94,d2			; TODO fix color brown
     bsr write_color_string
+   
     
-    ; namco logo
-    lea namco,a0
-    lea screen_data,a1
-    move.w  #48+16+16,d0
+    lea .midway1_string(pc),a0
+    move.w  #92,d0
     move.w  #172+36,d1
-    move.w  #10,d2
-    moveq.l #-1,d3
-    move.w  #8,d4
-    bsr blit_plane_any
-    lea screen_data+3*SCREEN_PLANE_SIZE,a1
-    move.w  #48+16+16,d0
-    move.w  #172+36,d1
-    bsr blit_plane_any
-    bsr wait_blit
-    
-    lea .namco_string(pc),a0
-    move.w  #48+16,d0
-    move.w  #172+36,d1
-    move.w  #$0fbf,d2
+    move.w  #$0f00,d2
+    bsr write_color_string
+    lea .midway2_string(pc),a0
+    move.w  #112,d0
+    move.w  #172+36+16,d1
+    move.w  #$0f00,d2
     bsr write_color_string
     
     rts
@@ -2000,9 +2035,11 @@ draw_start_screen
 .opo_string:
     dc.b    "1 PLAYER ONLY",0
 .bp1_string
-    dc.b    "BONUS PACMAN FOR 10000 pts",0
-.namco_string
-    dc.b    "c########1980",0
+    dc.b    "ADDITIONAL ## AT 10000 pts",0
+.midway1_string
+    dc.b    "c MIDWAY MFG CO",0
+.midway2_string
+    dc.b    "1980/1981",0
     even
 draw_intro_screen
     tst.w   state_timer
@@ -2051,19 +2088,6 @@ draw_intro_screen
     move.l  a1,(a0)+
     bsr draw_power_pill
         
-    ; namco logo
-    lea namco,a0
-    lea screen_data,a1
-    move.w  #X_DOT,d0
-    move.w  #224,d1
-    move.w  #10,d2
-    moveq.l #-1,d3
-    move.w  #8,d4
-    bsr blit_plane_any
-    lea screen_data+3*SCREEN_PLANE_SIZE,a1
-    move.w  #X_DOT,d0
-    move.w  #224,d1
-    bsr blit_plane_any
 .no_power_pill
     
     cmp.w   #DEMO_PACMAN_TIMER,state_timer
@@ -2118,61 +2142,28 @@ draw_intro_screen
 
 
     
-; < D0: 0,1,2,... score index 100,200 (not possible),300,500,700,1000,2000,3000,5000 ...
-
-THOUSAND_LIMIT = 5
+; < D0: 0,1,2,... score index 100,200,500,700,1000,2000,5000
+; TODO draw @ bonus coord
 
 draw_bonus_score:
-    move.w  d0,d3
-    cmp.w   #THOUSAND_LIMIT,d0
-    bcs.b   .under_thousand
-    sub.w   #THOUSAND_LIMIT,d0
-.under_thousand
+
     lsl.w   #6,d0       ; *64
     lea bonus_scores,a0
     add.w   d0,a0
     lea	screen_data+BONUS_X_POS/8+BONUS_Y_POS*NB_BYTES_PER_LINE,a1
     move.l  a1,a2
-    ; change x when >= 1000
+
     moveq.w  #10,d0
-    cmp.w   #THOUSAND_LIMIT,d3
-    bcs.b   .no_extra_zero1
-    ; extra zero: x is more to the left
-    moveq.l  #6,d0    
-.no_extra_zero1
+
     moveq.l  #0,d1
     moveq.l #-1,d2
     bsr blit_plane
     lea (SCREEN_PLANE_SIZE*3,a2),a1
     moveq.l  #10,d0
-    cmp.w   #THOUSAND_LIMIT,d3
-    bcs.b   .no_extra_zero2
-    moveq.l  #6,d0    
-.no_extra_zero2
+
     moveq.l  #0,d1
     moveq.l #-1,d2
     bsr blit_plane
-    
-    cmp.w   #THOUSAND_LIMIT,d3
-    bcs.b   .no_extra_zero
-    bsr wait_blit       ; wait else blit is going to write concurrently
-    add.l  #NB_BYTES_PER_LINE*4,a2
-    ; add an extra zero character to the right
-    move.l  #%00110000000,d0
-    move.l  #%01001000000,d1
-    moveq.w #1,d2
-    addq.w  #1,a2   ; else a2 is odd: crashes on 68000/010
-.orloop
-    or.w    d0,(a2)
-    or.w    d1,(NB_BYTES_PER_LINE,a2)
-    or.w    d1,(NB_BYTES_PER_LINE*2,a2)
-    or.w    d1,(NB_BYTES_PER_LINE*3,a2)
-    or.w    d1,(NB_BYTES_PER_LINE*4,a2)
-    or.w    d1,(NB_BYTES_PER_LINE*5,a2)
-    or.w    d0,(NB_BYTES_PER_LINE*6,a2)
-    lea (SCREEN_PLANE_SIZE*3,a2),a2
-    dbf d2,.orloop
-.no_extra_zero
     
     rts
     
@@ -2272,58 +2263,7 @@ draw_bonuses:
     
     rts
     
-; what: prepare aligned longwords to restore
-; bonus plane eaten by pacman
-; we'll use cpu OR, and not blitter
-get_bonus_pac_plane:
-    movem.l d0-d3/a0-a1,-(a7)
 
-    move.w  level_number(pc),d0
-    cmp.w   #12,d0
-    bcs.b   .ok
-    move.w  #12,d0  ; maxed 
-.ok
-    add.w   d0,d0
-    lea bonus_level_table(pc),a0
-    move.w  (a0,d0.w),d3      ; bonus index * 320
-
-    ; fixed fruit pos
-    lea bonus_plane_cached+1(pc),a1
-    
-    mulu.w  #10,d3
-    swap    d3
-    clr     d3
-    swap    d3
-    lsl.l   #5,d3
-    lea bonus_pics+64,a0
-    add.l   d3,a0    ; bonus second bitplane
-
-    ; 2 byte writes to avoid odd word write
-    REPT    16
-    move.b  (REPTN*4,a0),(4*REPTN,a1)
-    move.b  (REPTN*4+1,a0),(4*REPTN+1,a1)
-    ENDR
-    movem.l (a7)+,d0-d3/a0-a1
-    rts
-
-bonus_plane_cached
-    ds.l    16,0
-        
-; what: restore bonus plane (or'ing) when pacman is around
-
-draw_bonus_pac_plane
-    movem.l d0/a0-a1,-(a7)
-
-    ; fixed fruit pos
-    lea bonus_plane_cached(pc),a0
-    lea screen_data+SCREEN_PLANE_SIZE+BONUS_X_POS/8+BONUS_Y_POS*NB_BYTES_PER_LINE-1,a1  ; -1: even
-    
-    REPT    16
-    move.l  (REPTN*4,a0),d0
-    or.l  d0,(NB_BYTES_PER_LINE*REPTN,a1)
-    ENDR
-    movem.l (a7)+,d0/a0-a1
-    rts
     
 clear_bonus:
     move.w  #BONUS_X_POS,d0
@@ -2337,6 +2277,13 @@ clear_bonus:
     dbf d3,.cloop
     rts
     
+draw_bonus_in_maze
+
+	move.w  #BONUS_X_POS,d0
+    move.w  #BONUS_Y_POS,d1
+    move.w  level_number(pc),d2
+	rts
+	
 ; < D0: X
 ; < D1: Y
 ; < D2: level number
@@ -2458,7 +2405,7 @@ count_dots:
     
 draw_dots:
     ; draw pen gate
-    lea	screen_data+(RED_YSTART_POS-15)*NB_BYTES_PER_LINE+(RED_XSTART_POS-X_START)/8-1,a1
+    lea	screen_data+PEN_PLANE_OFFSET,a1
     moveq.l #-1,d0
     move.b  d0,(a1)
     move.b  d0,(NB_BYTES_PER_LINE,a1)
@@ -2732,8 +2679,7 @@ level2_interrupt:
     cmp.b   #$54,d0     ; F5
     bne.b   .no_bonus
     move.b  #3,dot_table+BONUS_OFFSET
-    move.w  #BONUS_TIMER_VALUE,bonus_timer
-    move.w  #MSG_SHOW,bonus_display_message
+    move.w  #1,bonus_active
     bra.b   .no_playing
 .no_bonus
 
@@ -2940,9 +2886,7 @@ update_all
     bra check_pac_ghosts_collisions
 
 remove_bonus
-    move.b  #0,dot_table+BONUS_OFFSET
-    move.w  #MSG_HIDE,bonus_display_message      ; tell draw routine to clear
-    clr.w   bonus_timer
+    clr.w   bonus_active
     rts
 remove_bonus_score
     move.w  #MSG_HIDE,bonus_score_display_message      ; tell draw routine to clear
@@ -3882,7 +3826,7 @@ update_ghosts:
 
 ; < A4: ghost structure    
 .can_exit_pen
-    cmp.l   #ghosts,a4
+    cmp.l   #red_ghost,a4
     beq.b   .exit_pen_ok        ; blinky cannot be trapped in the pen
     tst.b   pen_exit_override_flag(a4)
     bne.b   .exit_pen_ok
@@ -3950,8 +3894,18 @@ update_ghosts:
     bsr .compute_possible_directions
     move.w  d0,d3           ; save possible directions in D3
     move.w  mode(a4),d0
+	cmp.w	#MODE_SCATTER,d0
+	bne.b	.no_scatter
+	; if scatter and pinky or blinky then same behaviour as fright (random)
+	cmp.l	#pink_ghost,a4
+	beq.b	.random_movement
+	cmp.l	#red_ghost,a4
+	beq.b	.random_movement
+	bra.b	.no_fright
+.no_scatter
     cmp.w   #MODE_FRIGHT,d0
     bne.b   .no_fright
+.random_movement
     bsr random
     and.w   #3,d0   ; 4 directions to pick from
 
@@ -4275,7 +4229,7 @@ update_ghosts:
     cmp.w   #MODE_SCATTER,d0
     beq.b   .chase
     cmp.w   #MODE_CHASE,d0
-    beq.b   .scatter
+    beq.b   .switch_mode		; stay in chase now
     ; should not reach here!
     blitz
     nop
@@ -4294,16 +4248,7 @@ update_ghosts:
     bsr update_ghost_mode_timer
     move.b  #1,reverse_flag(a4)
     bra.b   .mode_done
-.scatter
-    move.l  a4,a0
-    bsr is_elroy
-    tst.w   d0
-    beq.b   .ok_scatter
-    move.w  #MODE_CHASE,d0
-    bra.b   .switch_mode
-.ok_scatter:
-    move.w  #MODE_SCATTER,D0
-    bra.b   .switch_mode
+
 .maxed
     ; end of sequence: chase mode all the time
     move.w  #MODE_CHASE,mode(a4)
@@ -4453,7 +4398,7 @@ update_pac
     lea player_kill_anim_table(pc),a0
     move.b  (a0,d5.w),d0
 .frame_done
-    lsl.w   #6,d0   ; times 64
+    lsl.w   #2,d0   ; times 4
     move.w  d0,death_frame_offset
     rts
 .alive
@@ -4464,11 +4409,10 @@ update_pac
     ; fright mode just ended: resume normal sound loop
     bsr start_background_loop
 .no_fright1
-    tst.w   bonus_timer
-    beq.b   .no_fruit
-    subq.w  #1,bonus_timer
-    bne.b   .no_fruit
-    ; timeout: make fruit disappear, no score
+	tst.w	bonus_x
+	bne.b	.no_fruit
+	; fruit exited by a maze tunnel on the left
+    ; make fruit disappear, no score
     bsr remove_bonus
 .no_fruit 
     tst.w   bonus_score_timer    
@@ -4703,7 +4647,7 @@ update_pac
     sub.b   #1,pen_nb_dots(a3)
 .no_need_to_count_dots
     move.b  nb_dots_eaten(pc),d4
-    tst.w   bonus_timer
+    tst.w   bonus_active
     bne.b   .skip_fruit_test
 
     cmp.b   #70,d4
@@ -4755,9 +4699,7 @@ update_pac
     bra.b   .other
 
 .show_fruit
-    move.b  #3,dot_table+BONUS_OFFSET
-    move.w  #BONUS_TIMER_VALUE,bonus_timer
-    move.w  #MSG_SHOW,bonus_display_message    
+	move.w	#1,bonus_active
     bra.b   .other
     
 .vtest
@@ -4982,12 +4924,86 @@ level_completed:
     move.b  #8,maze_blink_nb_times    
     move.w  #STATE_LEVEL_COMPLETED,current_state
     rts
+
+erase_bonus:
+    move.w  bonus_x(pc),d0
+    move.w  bonus_y(pc),d1
+	; TODO erase bonus
+	; 2 last planes can be erased without too much effort (watch out for limits)
+	; 2 first planes must restore maze boundaries and dots
+	rts
+	
+erase_mspacman
+	lea	player(pc),a4
+	moveq	#0,d1
+	move.w	xpos(a4),d0
+	cmp.w	#24,d0
+	bcs.b	.minimal_erase	; don't erase up/down if around the tunnel
+	cmp.w	#X_MAX-16,d0
+	bcs.b	.normal_erase
+.minimal_erase
+	; avoids destroying the status (high-score)
+	moveq	#1,d1
+.normal_erase
+	
+    ; first roughly clear some pacman zones that can remain. We don't test the directions
+    ; just clear every possible pixel that could remain whatever the direction was/is
+    
+    bsr wait_blit   ; (just in case the blitter didn't finish writing pacman)
+    ; restore dots around mspacman if not eaten
+    ;bsr restore_dots
+
+    ; erase is optimized. Mrs pacman uses 3 colors on 3 planes, but the blue color
+    ; is (on purpose) on the same level as the second maze plane. Since the color appears
+    ; only inside mrs pacman bob, no need to clear it, the next blit does the job
+    ; so now no need to be careful when deleting mrs pacman other planes or partially
+    ; redraw the maze or whatever: just bruteforce clear the planes
+    move.l  previous_pacman_address(pc),a3
+    cmp.l   #0,a3
+    beq.b   .verased
+    move.w  previous_pacman_vspeed(pc),d3
+;    beq.b   .no_verase
+;    tst.w   d3
+;    bpl.b   .erase_down
+	tst	d1
+	bne.b	.no_verase	; don't erase up/down if around the tunnel
+	
+    REPT    4
+    clr.l   (NB_BYTES_PER_LINE*(16+REPTN),a3)
+    clr.l  (NB_BYTES_PER_LINE*(16+REPTN)+SCREEN_PLANE_SIZE,a3)
+    ENDR  
+;    bra.b   .no_verase
+.erase_down
+    REPT    4
+    clr.l   (NB_BYTES_PER_LINE*(REPTN-4),a3)
+    clr.l   (NB_BYTES_PER_LINE*(REPTN-4)+SCREEN_PLANE_SIZE,a3)
+    ENDR
+;    bra.b   .verased
+.no_verase
+    move.w  previous_pacman_hspeed(pc),d3
+    beq.b   .verased
+    bpl.b   .erase_left
+    ; right
+    REPT    4
+    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+2,a3)
+    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+SCREEN_PLANE_SIZE+2,a3)
+    ENDR  
+    rts
+.erase_left
+	tst	d1
+	bne.b	.verased	; don't erase if too much on the left (trashes score)
+    REPT    4
+    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+1,a3)
+    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+SCREEN_PLANE_SIZE+1,a3)
+    ENDR  
+.verased
+    rts
     
 draw_mspacman:
     lea     player(pc),a2
     tst.w  ghost_eaten_timer
     bmi.b   .normal_pacdraw
-    lea     pac_dead+64*12,a0       ; empty
+    lea     pac_up_0,a0
     bra.b   .pacblit
 .normal_pacdraw
     tst.w  player_killed_timer
@@ -4995,6 +5011,7 @@ draw_mspacman:
     lea     pac_dead,a0
     move.w  death_frame_offset(pc),d0
     add.w   d0,a0       ; proper frame to blit
+    move.l  (a0),a0
     bra.b   .pacblit
 
 .normal    
@@ -5029,52 +5046,9 @@ draw_mspacman:
     swap    d2
     clr.w   d2
 .pdraw
-    ; first roughly clear some pacman zones that can remain. We don't test the directions
-    ; just clear every possible pixel that could remain whatever the direction was/is
-    
-    bsr wait_blit   ; (just in case the blitter didn't finish writing pacman)
-    ; restore dots around mspacman if not eaten
-    ;bsr restore_dots
 
-    ; erase is optimized. Mrs pacman uses 3 colors on 3 planes, but the blue color
-    ; is (on purpose) on the same level as the second maze plane. Since the color appears
-    ; only inside mrs pacman bob, no need to clear it, the next blit does the job
-    ; so now no need to be careful when deleting mrs pacman other planes or partially
-    ; redraw the maze or whatever: just bruteforce clear the planes
-    move.l  previous_pacman_address(pc),a3
     
-    move.w  previous_pacman_vspeed(pc),d3
-;    beq.b   .no_verase
-;    tst.w   d3
-;    bpl.b   .erase_down
-    REPT    4
-    clr.l   (NB_BYTES_PER_LINE*(16+REPTN),a3)
-    clr.l  (NB_BYTES_PER_LINE*(16+REPTN)+SCREEN_PLANE_SIZE,a3)
-    ENDR  
-;    bra.b   .no_verase
-.erase_down
-    REPT    4
-    clr.l   (NB_BYTES_PER_LINE*(REPTN-4),a3)
-    clr.l   (NB_BYTES_PER_LINE*(REPTN-4)+SCREEN_PLANE_SIZE,a3)
-    ENDR
-;    bra.b   .verased
-.no_verase
-    move.w  previous_pacman_hspeed(pc),d3
-    beq.b   .verased
-    bpl.b   .erase_left
-    ; right
-    REPT    4
-    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+2,a3)
-    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+SCREEN_PLANE_SIZE+2,a3)
-    ENDR  
-    bra.b   .verased
-.erase_left
-    REPT    4
-    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+1,a3)
-    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+SCREEN_PLANE_SIZE+1,a3)
-    ENDR  
-    
-.verased
+
     move.l  h_speed(a2),previous_pacman_hspeed  ; optim h+v
 
     lea	screen_data+SCREEN_PLANE_SIZE*2,a1
@@ -5628,6 +5602,55 @@ write_decimal_number
     movem.l (a7)+,A0/D2-d5
     rts
 .write_num
+    bsr convert_number
+    bra write_string
+    
+; what: writes an decimal number with a given color
+; args:
+; < A1: plane
+; < D0: X (multiple of 8)
+; < D1: Y
+; < D2: number value
+; < D3: number of padding zeroes
+; < D4: RGB4 color
+; > D0: number of characters written
+    
+write_color_decimal_number
+    movem.l A0/D2-d6,-(a7)
+    cmp.w   #18,d3
+    bcs.b   .padok
+    move.w  #18,d3
+.padok
+    cmp.l   #655361,d2
+    bcs.b   .one
+    sub.l   #4,d3
+    move.w  d0,d5
+    ; first write high part    
+    divu    #10000,d2
+    swap    d2
+    moveq.l #0,d6
+    move.w   d2,d6
+    clr.w   d2
+    swap    d2
+    bsr     .write_num
+    lsl.w   #3,d0
+    add.w   d5,d0   ; new xpos
+    
+    move.l  d6,d2
+    moveq   #4,d3   ; pad to 4
+.one
+    bsr     .write_num
+    movem.l (a7)+,A0/D2-d6
+    rts
+.write_num
+    bsr convert_number
+    move.w  d4,d2
+    bra write_color_string
+    
+    
+; < D2: value
+; > A0: buffer on converted number
+convert_number
     lea .buf+20(pc),a0
     tst.w   d2
     beq.b   .zero
@@ -5654,7 +5677,8 @@ write_decimal_number
     move.b  #' ',-(a0)
     dbf d3,.pad
 .w
-    bra write_string
+    rts
+    
 .buf
     ds.b    20
     dc.b    0
@@ -5937,8 +5961,7 @@ bonus_level_table:  ; 1 is not present, no score 200 in bonuses
 bonus_level_score:  ; *10
     dc.w    10,30,50,50,70,70,100,100,200,200,300,300
     dc.w    500,500,500,500,500,500,500,500,500
-bonus_timer:
-    dc.w    0
+
 ; general purpose timer for non-game states (intro, game over...)
 state_timer:
     dc.w    0
@@ -5949,7 +5972,7 @@ fruit_score_index:
 next_ghost_score
     dc.w    0
 previous_pacman_address
-    dc.l    screen_data+2*NB_BYTES_PER_LINE+SCREEN_PLANE_SIZE*2 ; valid address for first clear
+    dc.l    0
 previous_pacman_hspeed
     dc.w    0
 previous_pacman_vspeed
@@ -5993,6 +6016,14 @@ ghost_release_override_max_time:
     dc.w    0
 ghost_release_override_timer:
     dc.w    0
+bonus_active
+	dc.w	0
+bonus_x
+	dc.w	0
+bonus_y
+	dc.w	0
+bonus_y_offset
+	dc.w	0
 maze_blink_nb_times
     dc.b    0
 nb_lives:
@@ -6025,8 +6056,6 @@ elroy_threshold_2
     dc.b    0
     even
 
-bonus_display_message:
-    dc.w    0
 bonus_score_display_message:
     dc.w    0
 ready_display_message:
@@ -6079,7 +6108,7 @@ player_kill_anim_table:
     dc.b    11
     ENDR
     REPT    NB_TICKS_PER_SEC
-    dc.b    12
+    dc.b    11		; TEMP
     ENDR
     even
     
@@ -6343,8 +6372,11 @@ get_ghost_move_speed:
     cmp.b   #T,d0
     beq.b   .tunnel
     cmp.b   #P,d0
-    bne.b   .no_tunnel
+    bne.b   .no_tunnel	; TODO check speed in pen
 .tunnel
+	; ghosts don't slow down anymore in the tunnel from level 4
+	cmp.w	#4,level_number
+	bcc.b	.no_tunnel
     move.w  #4*16,d2
     bra.b   .table_computed
 .no_tunnel    
@@ -6821,42 +6853,34 @@ pac_down_1
     incbin  "pac_down_1.bin"
 pac_down_2
     incbin  "pac_down_2.bin"
+pac_empty
+    ds.b    64*4,0
 pac_dead
-    ; each has 64 bytes
-    incbin  "pac_dead_0.bin"
-    incbin  "pac_dead_1.bin"
-    incbin  "pac_dead_2.bin"
-    incbin  "pac_dead_3.bin"
-    incbin  "pac_dead_4.bin"
-    incbin  "pac_dead_5.bin"
-    incbin  "pac_dead_6.bin"
-    incbin  "pac_dead_7.bin"
-    incbin  "pac_dead_8.bin"
-    incbin  "pac_dead_9.bin"
-    incbin  "pac_dead_10.bin"
-    incbin  "pac_dead_11.bin"
-    ds.b    64,0        ; empty frame
+    dc.l    pac_down_0,pac_left_0,pac_up_0,pac_right_0
+    dc.l    pac_down_0,pac_left_0,pac_up_0,pac_right_0
+    dc.l    pac_down_0,pac_left_0,pac_up_0,pac_empty
 pac_lives
     incbin  "pac_lives.bin"
-namco:
-    incbin  "namco.bin"
-    
+
+midway
+    incbin  "midway.bin"
+
 bonus_pics:
     incbin  "cherry.bin"        ; 0
-    incbin  "cherry.bin"        ; 1  (gap for nonexistent 200 score)
     incbin  "strawberry.bin"    ; 2
     incbin  "peach.bin"         ; 3
+    incbin  "pretzel.bin"         ; 3
     incbin  "apple.bin"         ; 4
-    incbin  "grapes.bin"        ; 5
-    incbin  "galaxian.bin"      ; 6
-    incbin  "bell.bin"          ; 7
-    incbin  "key.bin"           ; 8
+    incbin  "pear.bin"        ; 5
+    incbin  "banana.bin"      ; 6
+
 bonus_scores:
-    incbin  "bonus_scores_0.bin"    ; 100
-    incbin  "bonus_score_200.bin"   ; 200 (for 2000)
-    incbin  "bonus_scores_1.bin"    ; 300
-    incbin  "bonus_scores_2.bin"    ; 500
-    incbin  "bonus_scores_3.bin"    ; 700
+    incbin  "bonus_scores_100.bin"    ; 100
+    incbin  "bonus_scores_200.bin"   ; 200
+    incbin  "bonus_scores_700.bin"    ; 300
+    incbin  "bonus_scores_1000.bin"    ; 500
+    incbin  "bonus_scores_2000.bin"    ; 700
+    incbin  "bonus_scores_5000.bin"    ; 700
 
 
 

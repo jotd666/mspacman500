@@ -157,7 +157,8 @@ def process_tiles():
 
 
 
-    name_dict = {"bonus_{}".format(i):n for i,n in enumerate(["cherry","strawberry","peach","apple","grapes","galaxian","bell","key"])}
+    name_dict = {"bonus_{}".format(i):n for i,n in enumerate(["cherry","strawberry","peach","pretzel","apple","pear","banana"])}
+    name_dict.update({"bonus_scores_{}".format(i):"bonus_scores_"+n for i,n in enumerate(["100","200","500","700","1000","2000","5000"])})
     # we first did that to get the palette but we need to control
     # the order of the palette
 
@@ -309,4 +310,4 @@ process_mazes()
 
 process_tiles()
 
-#process_fonts()
+process_fonts()

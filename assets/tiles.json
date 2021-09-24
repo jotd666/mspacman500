@@ -40,13 +40,16 @@
    "start_x":0,
    "start_y":48
  },
-{
-   "name":"pac_dead",
-   "generate_mask":true,
-   "frames":12,
-   "start_x":32,
-   "start_y":0
- },
+
+ {
+   "name":"midway",
+   "frames":1,
+   "start_x":128,
+   "start_y":96,
+   "width":32,
+   "height":32
+  },
+ 
  {
    "name":"ghost",
    "sprite_number":0,
@@ -80,31 +83,7 @@
    "start_y":80
   },
 
-  
-{
-   "name":"red_ghost_bob",
-   "frames":1,
-   "start_x":0,
-   "start_y":64
-  },
-{
-   "name":"pink_ghost_bob",
-   "frames":1,
-   "start_x":0,
-   "start_y":80
-  },
-  {
-   "name":"cyan_ghost_bob",
-   "frames":1,
-   "start_x":0,
-   "start_y":96
-  },
-   {
-  "name":"orange_ghost_bob",
-   "frames":1,
-   "start_x":0,
-   "start_y":112
-  },
+ 
     {
   "name":"scores",
    "sprite_number":5,
@@ -114,7 +93,7 @@
   },
   {
   "name":"bonus_scores",
-   "frames":4,
+   "frames":7,
    "start_x":0,
    "start_y":144
  },
