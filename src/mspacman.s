@@ -150,7 +150,6 @@ T = 2   ; tunnel
 B = 1   ; ghost up block
 O = 0   ; empty
 
-TOTAL_NUMBER_OF_DOTS = 244
 
 NB_BYTES_PER_LINE = 40
 NB_BYTES_PER_MAZE_LINE = 28
@@ -508,12 +507,11 @@ intro:
     ; do it first, as the last bonus overwrites bottom left of screen
     bsr draw_bonuses    
     bsr draw_maze
-   
+
     ; for debug
     ;;bsr draw_bounds
     
-    bsr draw_dots
-    
+    bsr draw_dots       
 
     bsr hide_sprites
 
@@ -716,7 +714,7 @@ init_level:
     lea (a0,d0.w),a0
     move.l  (a0)+,dot_table_read_only
     move.l  (a0)+,maze_wall_table
-    move.l  (a0)+,maze_colors
+    move.l  (a0)+,maze_misc
     move.l  (a0)+,D0
     move.l  d0,maze_bitmap_plane_1
     add.l  #NB_BYTES_PER_MAZE_LINE*NB_LINES,d0
@@ -1426,7 +1424,8 @@ draw_debug
     add.w  #DEBUG_X,d0
     move.l  d0,d3
     bsr count_dots
-    move.l  #TOTAL_NUMBER_OF_DOTS,d2
+    moveq.l #0,d2
+    move.b  total_number_of_dots(pc),d2
     sub.b d0,d2
     move.l  d3,d0   
     move.w  #3,d3
@@ -1779,14 +1778,13 @@ PLAYER_ONE_Y = 102-14
         
     ; timer not running, animate
     bsr animate_power_pills
-
     cmp.w   #MSG_SHOW,extra_life_message
     bne.b   .no_extra_life
     clr.w   extra_life_message
     bsr     draw_last_life
 .no_extra_life
     cmp.w   #MSG_HIDE,bonus_score_display_message
-    bne.b   .no_bonus_score_disappear
+    bra.b   .no_bonus_score_disappear       ; disabled right now
     clr.w   bonus_score_display_message
     lea bonus(pc),a0
     move.w  xpos(a0),d0
@@ -2285,38 +2283,74 @@ draw_bonuses:
     
 draw_bonus_in_maze
     lea bonus(pc),a0
-	move.w  xpos(a0),d3
-    move.w  ypos(a0),d4
-    clr.w   d3
-    clr.w   d4    
-    move.w  d3,d0
-    move.w  d4,d1
-    moveq.l #-1,d2      ; temp full mask
-    move.l  bonus_sprite(pc),a0     ; data to draw    
-    lea (BOB_16X16_PLANE_SIZE*4,a0),a3
-    lea screen_data,a1
-    move.l maze_bitmap_plane_1(pc),a2
+    moveq   #0,d5
+    move.w  xpos(a0),d0
+    move.w  ypos(a0),d1
+    ; center => top left
+    moveq.l #-1,d2 ; mask
+    sub.w  #8+Y_START,d1
+    sub.w  #8+X_START,d0
+    bpl.b   .no_left
+    ; d0 is negative
+    moveq   #1,d5   ; flag partial draw   
+    neg.w   d0
+    lsr.l   d0,d2
+    neg.w   d0
+    add.w   #NB_BYTES_PER_LINE*8,d0
+    subq.w  #1,d1
+    bra.b   .pdraw
+.no_left
+    ; check mask to the right
+    move.w  d0,d4    
+    sub.w   #X_MAX-24-X_START,d4
+    bmi.b   .pdraw
+    moveq   #1,d5   ; flag partial draw
+    lsl.l   d4,d2
+    swap    d2
+    clr.w   d2
+.pdraw
+    move.w  d0,d3
+    move.w  d1,d4       ; save
     
+    lea screen_data,a1
+    move.l  bonus_sprite(pc),a0     ; data to draw 
+    lea (BOB_16X16_PLANE_SIZE*4,a0),a3
+    tst d5
+    beq.b   .cookie1
+    bsr blit_plane
+    bra.b   .skip_cookie1
+.cookie1
+    move.l  a1,a2
     bsr blit_plane_cookie_cut
+.skip_cookie1
     
     move.w  d3,d0
     move.w  d4,d1
     lea screen_data+SCREEN_PLANE_SIZE,a1
-    move.l  maze_bitmap_plane_2(pc),a2
     lea  (BOB_16X16_PLANE_SIZE,a0),a0
+    tst d5
+    beq.b   .cookie2
+    bsr blit_plane
+    bra.b   .skip_cookie2
+.cookie2
+    move.l  a1,a2
     bsr blit_plane_cookie_cut
+.skip_cookie2
   
+    ; we have to cookie-cut the draw just in case mspacman is around
     move.w  d3,d0
     move.w  d4,d1
     lea screen_data+SCREEN_PLANE_SIZE*2,a1
+    move.l  a1,a2   ; cookie cut on itself
     lea  (BOB_16X16_PLANE_SIZE,a0),a0
-    bsr blit_plane
+    bsr blit_plane_cookie_cut
     
     move.w  d3,d0
     move.w  d4,d1
     lea screen_data+SCREEN_PLANE_SIZE*3,a1
+    move.l  a1,a2   ; cookie cut on itself
     lea  (BOB_16X16_PLANE_SIZE,a0),a0
-    bsr blit_plane
+    bsr blit_plane_cookie_cut
     
 	rts
 	
@@ -2345,10 +2379,11 @@ draw_bonus:
 draw_maze:    
     ; set colors
     lea _custom+color,a0
-    move.l  maze_colors(pc),a1
+    move.l  maze_misc(pc),a1
     move.w  (a1)+,(2,a0)  ; dots, color 1
 	move.w  (a1)+,(4,a0)  ; outline
 	move.w  (a1)+,(6,a0) ; fill
+    move.b  (1,a1),total_number_of_dots
     
     lea screen_data,a1
 
@@ -2748,27 +2783,69 @@ beamdelay
 
 activate_bonus
     move.w  #1,bonus_active
-    move.w  level_number(pc),d0
-    cmp.w   #8,d0
-    bcs.b   .normal
     ; random
     bsr random
-    and.w   #7,d0
-.normal
-    move.w  d0,fruit_score_index
-    
-    add.w   d0,d0
-    lea bonus_level_score(pc),a0
-    move.w  (a0,d0.w),fruit_score
+    ; which tunnel entry is the start ?
+    move.w  d0,d1
+    and.w   #3,d1       ; 0-4
 
-    add.w   d0,d0
+    move.w  level_number(pc),d2
+    cmp.w   #8,d2
+    bcs.b   .normal
+    move.w  d0,d2
+    lsr.w   #2,d2   ; more bits from random
+    and.w   #7,d2
+    cmp.w   #7,d2
+    bne.b   .normal
+    clr.w   d2
+.normal
+    ; D2: 0->6
+    move.w  d2,fruit_score_index
+    
+    add.w   d2,d2
+    lea bonus_level_score(pc),a0
+    move.w  (a0,d2.w),fruit_score
+
+    add.w   d2,d2
     lea bonus_table(pc),a0
-    move.l  (a0,d0.w),bonus_sprite    
+    move.l  (a0,d2.w),bonus_sprite    
 
     lea bonus(pc),a1
-    ; choose a tunnel entry TODO
-    move.w  #84,xpos(a1)
-    move.w  #78,ypos(a1)
+    ; choose a tunnel entry
+    move.l  tunnel_y(pc),a0
+    btst    #5,d0
+    bne.b   .right
+    ; left
+    move.w  #8,xpos(a1)    ; TEMP
+    move.w  #NB_BYTES_PER_MAZE_LINE,home_corner_xtile(a1)
+    move.w  #RIGHT,direction(a1)
+
+    bra.b   .vert
+.right
+    move.w  #LEFT,direction(a1)
+    move.w  #0,home_corner_xtile(a1)
+    move.w  #X_MAX-8,xpos(a1)    ; TEMP we'll handle shifting later
+.vert
+    btst    #6,d0
+    beq.b   .first
+    addq.w  #2,a0
+.first
+    move.w  (a0),d0
+    lsl.w   #3,d0   ; *8
+    add.w  #Y_START+4,d0   ; +28
+    move.w  d0,ypos(a1)
+
+    clr.w   speed_table_index(a1)   ; used for y offset
+
+    move.l  tunnel_y(pc),a0
+    ; choose a tunnel exit
+    btst    #7,d0
+    beq.b   .otherexit
+    addq.w  #2,a0
+.otherexit
+    move.w  (a0),d1
+    add.w   #3,d1   ; offset for the ghost zone
+    move.w  d1,home_corner_ytile(a1)
     
     rts
     
@@ -2943,8 +3020,16 @@ update_all
     bsr update_pac
     bsr check_pac_ghosts_collisions
     bsr update_ghosts
-    bra check_pac_ghosts_collisions
-
+    bsr check_pac_ghosts_collisions
+    tst.w   bonus_active
+    beq.b   .nobonus
+    bra update_bonus
+.nobonus
+    rts
+    
+update_bonus
+    bra check_pac_bonus_collision
+    
 remove_bonus
     clr.w   bonus_active
     rts
@@ -2958,6 +3043,30 @@ update_power_pill_flashing
     bpl.b   .no_reload
     move.w  #BLINK_RATE,power_pill_timer
 .no_reload
+    rts
+
+
+check_pac_bonus_collision
+    lea player(pc),a3
+    move.w  xpos(a3),d0
+    move.w  ypos(a3),d1
+    lsr.w   #3,d0
+    lsr.w   #3,d1
+    
+    lea bonus(pc),a4
+    move.w  xpos(a4),d2
+    move.w  ypos(a4),d3
+    lsr.w   #3,d2
+    lsr.w   #3,d3
+    cmp.w   d2,d0
+    bne.b   .nomatch
+    cmp.w   d3,d1
+    beq.b   .collision
+.nomatch
+    rts
+    
+.collision
+    ; remove the bonus
     rts
     
 ; is done after both pacman & ghosts have been updated, maybe allowing for the
@@ -4705,9 +4814,11 @@ update_pac
     tst.w   bonus_active
     bne.b   .skip_fruit_test
 
-    cmp.b   #70,d4
+    ; from https://github.com/BleuLlama/GameDocs/blob/master/disassemble/mspac.asm
+    ; number of dots eaten to make fruit appear is slightly different
+    cmp.b   #64,d4
     beq.b   .show_fruit
-    cmp.b   #170,d4
+    cmp.b   #176,d4
     beq.b   .show_fruit
 .skip_fruit_test
     
@@ -4731,7 +4842,7 @@ update_pac
     bne.b   .no_sound_loop_increase
     bsr start_background_loop
 .no_sound_loop_increase
-    cmp.b   #TOTAL_NUMBER_OF_DOTS,d4
+    cmp.b   total_number_of_dots(pc),d4
     bne.b   .other
     ; no more dots: win
     bsr level_completed
@@ -5059,7 +5170,7 @@ draw_mspacman:
     lea     player(pc),a2
     tst.w  ghost_eaten_timer
     bmi.b   .normal_pacdraw
-    lea     pac_up_0,a0
+    lea     pac_empty,a0
     bra.b   .pacblit
 .normal_pacdraw
     tst.w  player_killed_timer
@@ -5102,9 +5213,7 @@ draw_mspacman:
     swap    d2
     clr.w   d2
 .pdraw
-
-    
-
+   
     move.l  h_speed(a2),previous_pacman_hspeed  ; optim h+v
 
     lea	screen_data+SCREEN_PLANE_SIZE*2,a1
@@ -5330,20 +5439,20 @@ collides_with_maze:
 ; returns: A1 as start of destination (A1 = orig A1+40*D1+D0/8)
 
 blit_plane
-    movem.l d2-d4/a2-a5,-(a7)
+    movem.l d2-d5/a2-a5,-(a7)
     lea $DFF000,A5
 	move.l d2,bltafwm(a5)	;no masking of first/last word    
     move.w  #4,d2       ; 16 pixels + 2 shift bytes
     move.w  #16,d3      ; 16 pixels height
     bsr blit_plane_any_internal
-    movem.l (a7)+,d2-d4/a2-a5
+    movem.l (a7)+,d2-d5/a2-a5
     rts
     
 ; what: blits 16x16 data on one plane, cookie cut
 ; args:
 ; < A0: data (16x16)
-; < A1: plane
-; < A2: background (maze) to mix with cookie cut
+; < A1: plane  (40 rows)
+; < A2: background (40 rows) to mix with cookie cut
 ; < A3: source mask for cookie cut (16x16)
 ; < D0: X
 ; < D1: Y
@@ -5357,10 +5466,11 @@ blit_plane_cookie_cut
     lea $DFF000,A5
 	move.l d2,bltafwm(a5)	;masking of first/last word    
     move.w  #4,d2       ; 16 pixels + 2 shift bytes
-    move.w  #16,d3      ; 16 pixels height
+    move.w  #16,d3      ; 16 pixels height   
     bsr blit_plane_any_internal_cookie_cut
     movem.l (a7)+,d2-d7/a2-a5
     rts
+    
     
 ; what: blits (any width)x(any height) data on one plane
 ; args:
@@ -5452,6 +5562,7 @@ blit_plane_any_internal:
 ; < A1: destination
 ; < A2: background to mix with cookie cut
 ; < A3: source mask for cookie cut
+; < A4: multiplication table for background (x28 for maze, x40 for screen)
 ; < D2: width in bytes (inc. 2 extra for shifting)
 ; < D3: height
 ; blit mask set
@@ -5459,7 +5570,7 @@ blit_plane_any_internal:
 ; trashes: nothing
 
 blit_plane_any_internal_cookie_cut:
-    movem.l d0-d6/a4,-(a7)
+    movem.l d0-d6,-(a7)
     ; pre-compute the maximum of shit here
     move.w  d3,d4
     lea mul40_table(pc),a4
@@ -5492,7 +5603,7 @@ blit_plane_any_internal_cookie_cut:
 .d0_zero    
     add.l   d1,a1       ; plane position
 
-    lea mul28_table(pc),a4
+    ; a4 is a multiplication table
     ;;beq.b   .d1_zero    ; optim
     move.w  (a4,d6.w),d1
     swap    d1
@@ -5504,9 +5615,8 @@ blit_plane_any_internal_cookie_cut:
     add.l   d1,a2       ; Y maze plane position
 
 	move.w #NB_BYTES_PER_LINE,d0
+
     sub.w   d2,d0       ; blit width
-	move.w #NB_BYTES_PER_MAZE_LINE,d1
-    sub.w   d2,d1       ; blit width
 
     lsl.w   #6,d4
     lsr.w   #1,d2
@@ -5517,7 +5627,7 @@ blit_plane_any_internal_cookie_cut:
 	move.w #0,bltbmod(a5)		;A modulo=bytes to skip between lines
 	move.l d5,bltcon0(a5)	; sets con0 and con1
 
-    move.w  d1,bltcmod(a5)	;C modulo (maze width != screen width)
+    move.w  d0,bltcmod(a5)	;C modulo (maze width != screen width but we made it match)
     move.w  d0,bltdmod(a5)	;D modulo
 
     ; now just wait for blitter ready to write all registers
@@ -5530,7 +5640,7 @@ blit_plane_any_internal_cookie_cut:
 	move.l a1,bltdpt(a5)	;destination top left corner
 	move.w  d4,bltsize(a5)	;rectangle size, starts blit
     
-    movem.l (a7)+,d0-d6/a4
+    movem.l (a7)+,d0-d6
     rts
 
 
@@ -6040,7 +6150,7 @@ dot_table_read_only:
     dc.l    0
 maze_wall_table:
     dc.l    0
-maze_colors
+maze_misc
     dc.l    0
 maze_bitmap_plane_1
     dc.l    0
@@ -6071,7 +6181,8 @@ ghost_release_override_timer:
     dc.w    0
 bonus_active
 	dc.w	0
-
+total_number_of_dots:
+    dc.b    0
 maze_blink_nb_times
     dc.b    0
 nb_lives:
@@ -6475,7 +6586,7 @@ get_elroy_level:
     cmp.l   #ghosts,a0
     bne.b   .out
     move.w  d1,-(a7)
-    move.b  #TOTAL_NUMBER_OF_DOTS,d1
+    move.b  total_number_of_dots(pc),d1
     sub.b   nb_dots_eaten(pc),d1
     cmp.b   elroy_threshold_2(pc),d1
     bcs.b   .level2
@@ -6502,7 +6613,7 @@ is_elroy:
     cmp.l   #ghosts,a0
     bne.b   .out
     move.w  d1,-(a7)
-    move.b  #TOTAL_NUMBER_OF_DOTS,d1
+    move.b  total_number_of_dots(pc),d1
     sub.b   nb_dots_eaten(pc),d1
     cmp.b   elroy_threshold_1(pc),d1
     movem.w  (a7)+,d1
