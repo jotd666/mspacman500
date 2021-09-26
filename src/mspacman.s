@@ -2280,12 +2280,27 @@ draw_bonuses:
 .outb
     rts
     
-    
+
+erase_bonus
+    move.w  bonus_previous_y(pc),d1
+    bmi.b   .ignore
+    move.w  bonus_previous_x(pc),d0 
+    lea     empty_16x16_bob,a0
+    bra.b internal_bonus_draw
+.ignore
+    rts
+        
 draw_bonus_in_maze
     lea bonus(pc),a0
-    moveq   #0,d5
     move.w  xpos(a0),d0
     move.w  ypos(a0),d1
+    move.l  bonus_sprite(pc),a0
+    
+internal_bonus_draw    
+    ; mask is always the same
+    move.l  bonus_sprite(pc),a3
+    lea (BOB_16X16_PLANE_SIZE*4,a3),a3
+    moveq   #0,d5
     ; center => top left
     moveq.l #-1,d2 ; mask
     sub.w  #8+Y_START,d1
@@ -2313,8 +2328,6 @@ draw_bonus_in_maze
     move.w  d1,d4       ; save
     
     lea screen_data,a1
-    move.l  bonus_sprite(pc),a0     ; data to draw 
-    lea (BOB_16X16_PLANE_SIZE*4,a0),a3
     tst d5
     beq.b   .cookie1
     bsr blit_plane
@@ -3028,10 +3041,16 @@ update_all
     rts
     
 update_bonus
+    lea bonus(pc),a0
+    move.l  xpos(a0),bonus_previous_x   ; optim save both x & y
+    
     bra check_pac_bonus_collision
     
-remove_bonus
+remove_bonus:
     clr.w   bonus_active
+    ; invalidate previous positions
+    ; y (and probably x too) cannot be negative, ever
+    move.l  #-1,bonus_previous_x    ; x&y negative
     rts
 remove_bonus_score
     move.w  #MSG_HIDE,bonus_score_display_message      ; tell draw routine to clear
@@ -5091,14 +5110,6 @@ level_completed:
     move.w  #STATE_LEVEL_COMPLETED,current_state
     rts
 
-erase_bonus:
-    lea bonus(pc),a0
-    move.w  xpos(a0),d0
-    move.w  ypos(a0),d1
-	; TODO erase bonus
-	; 2 last planes can be erased without too much effort (watch out for limits)
-	; 2 first planes must restore maze boundaries and dots
-	rts
 	
 erase_mspacman
 	lea	player(pc),a4
@@ -5170,7 +5181,7 @@ draw_mspacman:
     lea     player(pc),a2
     tst.w  ghost_eaten_timer
     bmi.b   .normal_pacdraw
-    lea     pac_empty,a0
+    lea     empty_16x16_bob,a0
     bra.b   .pacblit
 .normal_pacdraw
     tst.w  player_killed_timer
@@ -6181,6 +6192,10 @@ ghost_release_override_timer:
     dc.w    0
 bonus_active
 	dc.w	0
+bonus_previous_x
+    dc.w    0
+bonus_previous_y
+    dc.w    0
 total_number_of_dots:
     dc.b    0
 maze_blink_nb_times
@@ -7023,12 +7038,12 @@ pac_down_1
     incbin  "pac_down_1.bin"
 pac_down_2
     incbin  "pac_down_2.bin"
-pac_empty
+empty_16x16_bob
     ds.b    64*4,0
 pac_dead
     dc.l    pac_down_0,pac_left_0,pac_up_0,pac_right_0
     dc.l    pac_down_0,pac_left_0,pac_up_0,pac_right_0
-    dc.l    pac_down_0,pac_left_0,pac_up_0,pac_empty
+    dc.l    pac_down_0,pac_left_0,pac_up_0,empty_16x16_bob
 pac_lives
     incbin  "pac_lives.bin"
 
