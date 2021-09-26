@@ -9,7 +9,7 @@ REQUIRES:
 
 TODO: 
 
-- mazes: find all colors of each maze (print all 4 and check all levels)
+- mazes: find all colors of each maze for all levels/find the pattern
 - wrong death sequence
 - mrspacman eats: stays on screen below the score!!
 

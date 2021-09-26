@@ -11,7 +11,18 @@ def process_mazes():
         fw.write("maze_table:\n")
         for i in range(len(tunnels)):
             fw.write("\tdc.l\tmaze_{0}_dot_table_read_only,maze_{0}_wall_table,maze_{0}_colors,maze_{0}_bitmap\n".format(i+1))
+        # extra mazes reuse bitmaps from mazes 3 & 4 with different colors
+        fw.write("\tdc.l\tmaze_{0}_dot_table_read_only,maze_{0}_wall_table,maze_5_colors,maze_{0}_bitmap\n".format(3))
+        fw.write("\tdc.l\tmaze_{0}_dot_table_read_only,maze_{0}_wall_table,maze_1_colors,maze_{0}_bitmap\n".format(4))
+
         fw.write("\n")
+
+        fw.write("tunnel_y_table:\n")
+        for i in list(range(len(tunnels)))+[2,3]:
+            fw.write("\tdc.l\tmaze_{}_tunnel_y\n".format(i+1))
+
+        fw.write("\n")
+
         for i in range(len(tunnels)):
             fw.write("maze_{}_bitmap:\n".format(i+1))
             fw.write("\tincbin\tmaze_{}.bin\n".format(i+1))
@@ -99,11 +110,28 @@ def process_mazes():
             fw.write("\tdc.w\t${:x}  ; dots\n".format(torgb4(dot_color)))
             fw.write("\tdc.w\t${:x}  ; outline\n".format(torgb4(outline_color)))
             fw.write("\tdc.w\t${:x}  ; fill\n\n".format(torgb4(fill_color)))
+            fw.write("\nmaze_{}_tunnel_y:\n".format(i))
+
+
+            tcopy = [t[0] for t in tunnel]
+            # now all tunnel arrays have 2 elements
+            if len(tcopy)==1:
+                tcopy.append(tcopy[0])
+
+            fw.write("\tdc.w\t${:x},${:x}  ; tunnel y\n".format(*tcopy))
+
 
             # now dump each maze with its own palette
             maze_palette = [(0,0,0),(0,0,0),outline_color,fill_color]  # black, dot color, maze colors
 
             bitplanelib.palette_image2raw(maze_img,r"../{}/maze_{}.bin".format(sprites_dir,i),maze_palette)
+
+        # extra colors
+        fw.write("\nmaze_5_colors:\n")
+        fw.write("\tdc.w\t${:x}  ; dots\n".format(0xFF))    # cyan
+        fw.write("\tdc.w\t${:x}  ; outline\n".format(0xFF0))  # yellow
+        fw.write("\tdc.w\t${:x}  ; fill\n\n".format(0xFBF))
+
         # pixel 1,5 holds the fill color of the maze wall
         #maze_img.save("dumps/maze_{}.png".format(i))
         #maze_palette = bitplanelib.palette_extract(maze,0xF0)

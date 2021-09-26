@@ -123,7 +123,7 @@ FOURTH_INTERMISSION_LEVEL = 13
 ;;INTERMISSION_TEST = THIRD_INTERMISSION_LEVEL
 
 ; if set skips intro and start music, game starts almost immediately
-;;DIRECT_GAME_START
+DIRECT_GAME_START
 
 ; temp if nonzero, then records game input, intro music doesn't play
 ; and when one life is lost, blitzes and a0 points to move record table
@@ -154,6 +154,7 @@ TOTAL_NUMBER_OF_DOTS = 244
 
 NB_BYTES_PER_LINE = 40
 NB_BYTES_PER_MAZE_LINE = 28
+BOB_16X16_PLANE_SIZE = 64
 MAZE_PLANE_SIZE = NB_BYTES_PER_LINE*NB_LINES
 SCREEN_PLANE_SIZE = 40*NB_LINES
 NB_PLANES   = 4
@@ -193,9 +194,6 @@ RED_YSTART_POS = 92+Y_START
 RED_XSTART_POS = 112+X_START
 OTHERS_YSTART_POS = RED_YSTART_POS+24
 
-BONUS_X_POS = RED_XSTART_POS-24
-BONUS_Y_POS = RED_YSTART_POS+16
-BONUS_OFFSET = $28F  ;(NB_TILES_PER_LINE*20)+14
 BONUS_TIMER_VALUE = NB_TICKS_PER_SEC*10     ; ORIGINAL_TICKS_PER_SEC?
 BONUS_SCORE_TIMER_VALUE = NB_TICKS_PER_SEC*2     ; ORIGINAL_TICKS_PER_SEC?
 BLINK_RATE = ORIGINAL_TICKS_PER_SEC/2 ; for powerdots
@@ -687,9 +685,33 @@ init_new_play:
     
 init_level: 
     ; maze characteristics
-    move.w  maze_number(pc),d0  ; computed from level number TODO
+    move.w  level_number(pc),d0
+    move.w  d0,d1
+    sub.w   #14,d1
+    bmi.b   .lower_mazes
+    ; mazes from level 14 and up
+    btst    #2,d1
+    beq.b   .even
+    move.w  #4,d0
+    bra.b   .cont
+.even
+    move.w  #5,d0
+    bra.b   .cont
+.lower_mazes    
+    add.w   d0,d0
+    lea     maze_index_table(pc),a0
+    move.w  (a0,d0.w),d0    ; computed from level number
+    subq.w  #1,d0    
+.cont
+    add.w   d0,d0
+    add.w   d0,d0   ; *4
+    lea tunnel_y_table,a0
+    move.l  (a0,d0.w),tunnel_y
+
+    add.w   d0,d0
+    add.w   d0,d0   ; *4 to make *16
     ; maze_dot_table_read_only,maze_wall_table,maze_colors,maze_bitmap
-    lsl.w   #4,d0   ; *16
+
     lea     maze_table,a0
     lea (a0,d0.w),a0
     move.l  (a0)+,dot_table_read_only
@@ -715,12 +737,6 @@ init_level:
     move.b  d0,elroy_threshold_2
     
     
-    add.w   d2,d2
-
-    lea bonus_level_score(pc),a0
-    move.w  (a0,d2.w),fruit_score
-    lea bonus_level_table(pc),a0
-    move.w  (a0,d2.w),fruit_score_index
     clr.b  nb_dots_eaten
     clr.b   elroy_mode_lock
     clr.b   a_life_was_lost
@@ -1696,7 +1712,6 @@ PLAYER_ONE_Y = 102-14
 
     
 .game_over
-    bsr clear_bonus
     bsr write_game_over
     bra.b   .draw_complete
 .playing
@@ -1773,8 +1788,9 @@ PLAYER_ONE_Y = 102-14
     cmp.w   #MSG_HIDE,bonus_score_display_message
     bne.b   .no_bonus_score_disappear
     clr.w   bonus_score_display_message
-    move.w  #BONUS_X_POS-8,d0
-    move.w  #BONUS_Y_POS,d1
+    lea bonus(pc),a0
+    move.w  xpos(a0),d0
+    move.w  ypos(a0),d1
     move.w  #5,d2
     ; we know that this color is only on 2 planes
     ; (convieniently 2 planes where pacman isn't drawn!)
@@ -2150,7 +2166,7 @@ draw_bonus_score:
     lsl.w   #6,d0       ; *64
     lea bonus_scores,a0
     add.w   d0,a0
-    lea	screen_data+BONUS_X_POS/8+BONUS_Y_POS*NB_BYTES_PER_LINE,a1
+    lea	screen_data+100,a1  ; TEMP!!!
     move.l  a1,a2
 
     moveq.w  #10,d0
@@ -2247,6 +2263,10 @@ draw_bonuses:
     move.w #NB_BYTES_PER_MAZE_LINE*8,d0
     move.w #248-32,d1
     move.w  level_number(pc),d2
+    cmp.w   #6,d2
+    bcs.b   .ok
+    move.w  #6,d2 
+.ok
     move.w  #1,d4
 .dbloopy
     move.w  #5,d3
@@ -2260,28 +2280,44 @@ draw_bonuses:
     add.w   #16,d1
     dbf d4,.dbloopy
 .outb
-    
     rts
     
-
-    
-clear_bonus:
-    move.w  #BONUS_X_POS,d0
-    move.w  #BONUS_Y_POS,d1
-    move.w  #4,d2
-    lea	screen_data,a1
-    move.w  #3,d3
-.cloop
-    bsr clear_plane_any
-    add.l  #SCREEN_PLANE_SIZE,a1
-    dbf d3,.cloop
-    rts
     
 draw_bonus_in_maze
-
-	move.w  #BONUS_X_POS,d0
-    move.w  #BONUS_Y_POS,d1
-    move.w  level_number(pc),d2
+    lea bonus(pc),a0
+	move.w  xpos(a0),d3
+    move.w  ypos(a0),d4
+    clr.w   d3
+    clr.w   d4    
+    move.w  d3,d0
+    move.w  d4,d1
+    moveq.l #-1,d2      ; temp full mask
+    move.l  bonus_sprite(pc),a0     ; data to draw    
+    lea (BOB_16X16_PLANE_SIZE*4,a0),a3
+    lea screen_data,a1
+    move.l maze_bitmap_plane_1(pc),a2
+    
+    bsr blit_plane_cookie_cut
+    
+    move.w  d3,d0
+    move.w  d4,d1
+    lea screen_data+SCREEN_PLANE_SIZE,a1
+    move.l  maze_bitmap_plane_2(pc),a2
+    lea  (BOB_16X16_PLANE_SIZE,a0),a0
+    bsr blit_plane_cookie_cut
+  
+    move.w  d3,d0
+    move.w  d4,d1
+    lea screen_data+SCREEN_PLANE_SIZE*2,a1
+    lea  (BOB_16X16_PLANE_SIZE,a0),a0
+    bsr blit_plane
+    
+    move.w  d3,d0
+    move.w  d4,d1
+    lea screen_data+SCREEN_PLANE_SIZE*3,a1
+    lea  (BOB_16X16_PLANE_SIZE,a0),a0
+    bsr blit_plane
+    
 	rts
 	
 ; < D0: X
@@ -2290,13 +2326,12 @@ draw_bonus_in_maze
 
 draw_bonus:
     movem.l d0-d3/a0-a1,-(a7)
-    cmp.w   #12,d2
+    cmp.w   #7,d2
     bcs.b   .ok
-    move.w  #12,d2  ; maxed 
+    move.w  #7,d2  ; maxed 
 .ok
-    add.w   d2,d2
-    lea bonus_level_table(pc),a0
-    move.w  (a0,d2.w),d3      ; bonus index
+
+    move.w  d2,d3      ; bonus index
     lea mul40_table(pc),a1
     add.w   d3,d3
     move.w  (a1,d3.w),d3    ; *40
@@ -2678,8 +2713,7 @@ level2_interrupt:
 .no_debug
     cmp.b   #$54,d0     ; F5
     bne.b   .no_bonus
-    move.b  #3,dot_table+BONUS_OFFSET
-    move.w  #1,bonus_active
+    bsr activate_bonus
     bra.b   .no_playing
 .no_bonus
 
@@ -2712,6 +2746,32 @@ beamdelay
 	dbf	d0,.bd_loop1
 	rts
 
+activate_bonus
+    move.w  #1,bonus_active
+    move.w  level_number(pc),d0
+    cmp.w   #8,d0
+    bcs.b   .normal
+    ; random
+    bsr random
+    and.w   #7,d0
+.normal
+    move.w  d0,fruit_score_index
+    
+    add.w   d0,d0
+    lea bonus_level_score(pc),a0
+    move.w  (a0,d0.w),fruit_score
+
+    add.w   d0,d0
+    lea bonus_table(pc),a0
+    move.l  (a0,d0.w),bonus_sprite    
+
+    lea bonus(pc),a1
+    ; choose a tunnel entry TODO
+    move.w  #84,xpos(a1)
+    move.w  #78,ypos(a1)
+    
+    rts
+    
 ; what: level 3 interrupt (vblank/copper)
 ; args: none
 ; trashes: none
@@ -4409,12 +4469,7 @@ update_pac
     ; fright mode just ended: resume normal sound loop
     bsr start_background_loop
 .no_fright1
-	tst.w	bonus_x
-	bne.b	.no_fruit
-	; fruit exited by a maze tunnel on the left
-    ; make fruit disappear, no score
-    bsr remove_bonus
-.no_fruit 
+
     tst.w   bonus_score_timer    
     beq.b   .no_fruit_score
     subq.w  #1,bonus_score_timer
@@ -4699,7 +4754,7 @@ update_pac
     bra.b   .other
 
 .show_fruit
-	move.w	#1,bonus_active
+	bsr activate_bonus
     bra.b   .other
     
 .vtest
@@ -4926,8 +4981,9 @@ level_completed:
     rts
 
 erase_bonus:
-    move.w  bonus_x(pc),d0
-    move.w  bonus_y(pc),d1
+    lea bonus(pc),a0
+    move.w  xpos(a0),d0
+    move.w  ypos(a0),d1
 	; TODO erase bonus
 	; 2 last planes can be erased without too much effort (watch out for limits)
 	; 2 first planes must restore maze boundaries and dots
@@ -5053,9 +5109,8 @@ draw_mspacman:
 
     lea	screen_data+SCREEN_PLANE_SIZE*2,a1
     
-    lea (64*4,a0),a3    ; mask follows the 4 data bitplanes
-    lea (128,a0),a0    ; skip first plane for bitmap
-    move.l  maze_bitmap_plane_2(pc),a2
+    lea (BOB_16X16_PLANE_SIZE*4,a0),a3    ; mask follows the 4 data bitplanes
+    lea (BOB_16X16_PLANE_SIZE*2,a0),a0    ; skip first plane for bitmap
     move.l  a1,a6
     move.w d0,d3
     move.w d1,d4
@@ -5067,7 +5122,7 @@ draw_mspacman:
     move.w d4,d1
     ; no cookie cut for the rest of the planes
     lea (SCREEN_PLANE_SIZE,a6),a1
-    lea (64,a0),a0    ; next plane for bitmap
+    lea (BOB_16X16_PLANE_SIZE,a0),a0    ; next plane for bitmap
     ; no need to blit data from plane 4: mspacman colors fit into the first 3
     ; planes, saves some bandwidth!!
     bra blit_plane
@@ -5956,11 +6011,9 @@ high_score
 maze_blink_timer
     dc.w    0
     ; table up to level 21. After that it's the same
-bonus_level_table:  ; 1 is not present, no score 200 in bonuses
-    dc.w    0,2,3,3,4,4,5,5,6,6,7,7,8,8,8,8,8,8,8,8,8
+
 bonus_level_score:  ; *10
-    dc.w    10,30,50,50,70,70,100,100,200,200,300,300
-    dc.w    500,500,500,500,500,500,500,500,500
+    dc.w    10,30,50,70,100,200,500,500
 
 ; general purpose timer for non-game states (intro, game over...)
 state_timer:
@@ -5993,10 +6046,10 @@ maze_bitmap_plane_1
     dc.l    0
 maze_bitmap_plane_2
     dc.l    0
+tunnel_y
+    dc.l    0
 ; 0: level 1
 level_number:
-    dc.w    0
-maze_number:
     dc.w    0
 player_killed_timer:
     dc.w    -1
@@ -6018,12 +6071,7 @@ ghost_release_override_timer:
     dc.w    0
 bonus_active
 	dc.w	0
-bonus_x
-	dc.w	0
-bonus_y
-	dc.w	0
-bonus_y_offset
-	dc.w	0
+
 maze_blink_nb_times
     dc.b    0
 nb_lives:
@@ -6141,8 +6189,13 @@ pac_anim_\1_end
     PAC_ANIM_TABLE  up
     PAC_ANIM_TABLE  down
 
-
+bonus_sprite
+    dc.l    0
     
+bonus_table:
+    REPT    8
+    dc.l    bonus_pics+BOB_16X16_PLANE_SIZE*5*REPTN
+    ENDR
 
 digits:
     incbin  "0.bin"
@@ -6628,6 +6681,7 @@ loop_table:
 loop_index
     dc.w    0
     
+
 ; number of dots remaining, triggers elroy1 mode
 elroy_table:
     dc.b    20
@@ -6651,8 +6705,10 @@ elroy_table:
     dc.b    120
     dc.b    120
     dc.b    120
-
     even
+maze_index_table
+    dc.w    1,1,2,2,2,3,3,3,3,4,4,4,4
+
  ; speed table at 60 Hz
 speed_table:  ; lifted from https://github.com/shaunlebron/pacman/blob/master/src/Actor.js
     dc.l    speeds_level1,speeds_level2_4,speeds_level2_4,speeds_level2_4
@@ -6725,6 +6781,9 @@ pink_ghost:      ; needed by cyan ghost
 orange_ghost:        ; needed to unlock elroy mode
     ds.b    Ghost_SIZEOF
 
+bonus:
+    ds.b    Ghost_SIZEOF
+    
 
     
 ; BSS --------------------------------------
