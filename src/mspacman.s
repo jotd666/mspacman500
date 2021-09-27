@@ -703,8 +703,9 @@ init_level:
 .cont
     add.w   d0,d0
     add.w   d0,d0   ; *4
-    lea tunnel_y_table,a0
-    move.l  (a0,d0.w),tunnel_y
+    lea fruit_path_table,a0
+    
+    move.l  (a0,d0.w),maze_fruit_entry_table
 
     add.w   d0,d0
     add.w   d0,d0   ; *4 to make *16
@@ -2761,6 +2762,7 @@ level2_interrupt:
 .no_debug
     cmp.b   #$54,d0     ; F5
     bne.b   .no_bonus
+    move.w  #$2300,sr
     bsr activate_bonus
     bra.b   .no_playing
 .no_bonus
@@ -2798,15 +2800,19 @@ activate_bonus
     move.w  #1,bonus_active
     ; random
     bsr random
+    
     ; which tunnel entry is the start ?
     move.w  d0,d1
-    and.w   #3,d1       ; 0-4
-
+    and.w   #3,d1       ; entry 0-3
+    move.w  d0,d3
+    lsr.w   #2,d3
+    and.w   #3,d3       ; exit 0-3
+    
     move.w  level_number(pc),d2
     cmp.w   #8,d2
     bcs.b   .normal
     move.w  d0,d2
-    lsr.w   #2,d2   ; more bits from random
+    lsr.w   #4,d2   ; more bits from random
     and.w   #7,d2
     cmp.w   #7,d2
     bne.b   .normal
@@ -2823,43 +2829,58 @@ activate_bonus
     lea bonus_table(pc),a0
     move.l  (a0,d2.w),bonus_sprite    
 
-    lea bonus(pc),a1
-    ; choose a tunnel entry
-    move.l  tunnel_y(pc),a0
-    btst    #5,d0
-    bne.b   .right
-    ; left
-    move.w  #8,xpos(a1)    ; TEMP
-    move.w  #NB_BYTES_PER_MAZE_LINE,home_corner_xtile(a1)
-    move.w  #RIGHT,direction(a1)
-
-    bra.b   .vert
-.right
-    move.w  #LEFT,direction(a1)
-    move.w  #0,home_corner_xtile(a1)
-    move.w  #X_MAX-8,xpos(a1)    ; TEMP we'll handle shifting later
-.vert
-    btst    #6,d0
-    beq.b   .first
-    addq.w  #2,a0
-.first
-    move.w  (a0),d0
-    lsl.w   #3,d0   ; *8
-    add.w  #Y_START+4,d0   ; +28
-    move.w  d0,ypos(a1)
-
-    clr.w   speed_table_index(a1)   ; used for y offset
-
-    move.l  tunnel_y(pc),a0
-    ; choose a tunnel exit
-    btst    #7,d0
-    beq.b   .otherexit
-    addq.w  #2,a0
-.otherexit
-    move.w  (a0),d1
-    add.w   #3,d1   ; offset for the ghost zone
-    move.w  d1,home_corner_ytile(a1)
+    lea bonus(pc),a0
+    ; choose a tunnel entry, there are 4 entries
+    move.l  maze_fruit_entry_table(pc),a2
+    add.w   d1,d1
+    add.w   d1,d1
+    move.l  (a2,d1.w),a1    ; random fruit entry for that maze
+    add.w   d3,d3
+    add.w   d3,d3
+    move.l  (a2,d3.w),fruit_exit_path    ; random fruit exit for that maze
     
+    move.w  (a1)+,d0 ; start tile x
+    lsl.w   #3,d0
+    move.w  d0,xpos(a0)
+    move.w  (a1)+,d0 ; start tile y
+    lsl.w   #3,d0
+    addq.w  #4,d0   ; add some offset
+    move.w  d0,ypos(a0)
+    ; store start of path
+    move.l  a1,fruit_entry_path
+
+    ; give direction & target to fruit
+    bsr fruit_next_entry
+    
+    clr.w   speed_table_index(a0)   ; used for y offset
+
+    
+    rts
+
+; < A0: fruit structure
+; > D0: if 0 then no more entries
+fruit_next_entry
+    movem.l a1,-(a7)
+    move.l  fruit_entry_path(pc),a1
+    bsr.b   fruit_next_xxx
+    ; here D0=0 if path ended
+    move.l  a1,fruit_entry_path
+    move.l (a7)+,a1
+    rts
+    
+fruit_next_xxx
+    move.l  (a1)+,d0
+    beq.b   .path_done
+    move.w  ypos(a0),d1
+    lsr.w   #3,d1
+    add.w   d0,d1   ; y tile
+    move.w  d1,target_ytile(a0)
+    swap    d0
+    move.w  xpos(a0),d1
+    lsr.w   #3,d1
+    add.w   d0,d1   ; x tile
+    move.w  d1,target_xtile(a0)
+.path_done
     rts
     
 ; what: level 3 interrupt (vblank/copper)
@@ -3041,11 +3062,55 @@ update_all
     rts
     
 update_bonus
+    eor.b   #1,.needs_update
+    bne.b   .doit
+    rts
+.doit
     lea bonus(pc),a0
-    move.l  xpos(a0),bonus_previous_x   ; optim save both x & y
+    move.l  xpos(a0),d0
+    move.l  d0,bonus_previous_x   ; optim save both x & y
+    ; move according to target tile
+    move.w  target_xtile(a0),d2
+    move.w  target_ytile(a0),d3
+    lsl.w   #3,d2
+    addq.w  #4,d2
+    lsl.w   #3,d3
+    addq.w  #4,d3
     
+    move.w  d0,d1   ; y tile
+    swap    d0
+    
+    cmp.w   d0,d2
+    beq.b   .horiz_aligned
+    ; not on the same x tile: move
+    bcc.b   .right
+    ; left
+    subq.w   #1,xpos(a0)
+    bra.b   .cont
+.right
+    addq.w   #1,xpos(a0)
+    bra.b   .cont
+.horiz_aligned
+    cmp.w   d1,d3
+    beq.b   .target_reached
+    bcc.b   .down
+    subq.w  #1,ypos(a0)
+    bra.b   .cont
+.down
+    addq.w  #1,ypos(a0)
+    bra.b   .cont
+.target_reached
+    ; next target tile
+    bsr fruit_next_entry
+    tst.l   d0
+    bne.b   .cont
+    blitz
+.cont    
     bra check_pac_bonus_collision
     
+.needs_update
+    dc.w    0
+        
 remove_bonus:
     clr.w   bonus_active
     ; invalidate previous positions
@@ -6167,7 +6232,7 @@ maze_bitmap_plane_1
     dc.l    0
 maze_bitmap_plane_2
     dc.l    0
-tunnel_y
+maze_fruit_entry_table
     dc.l    0
 ; 0: level 1
 level_number:
@@ -6182,6 +6247,10 @@ fright_timer:
     dc.w    0
 cheat_sequence_pointer
     dc.l    cheat_sequence
+fruit_entry_path
+    dc.l    0
+fruit_exit_path
+    dc.l    0
 cheat_keys
     dc.w    0
 death_frame_offset
@@ -6998,6 +7067,41 @@ end_color_copper:
     dc.l    -2
 
     include "maze_data.s"       ; generated by "convert_sprites.py" python script
+
+maze_1_fruit_entry_table:
+    dc.l     maze_1_fruit_entry_1
+    dc.l     maze_1_fruit_entry_1
+    dc.l     maze_1_fruit_entry_1
+    dc.l     maze_1_fruit_entry_1
+maze_1_fruit_exit_table:
+    dc.l     maze_1_fruit_exit_1
+    dc.l     maze_1_fruit_exit_1
+    dc.l     maze_1_fruit_exit_1
+    dc.l     maze_1_fruit_exit_1
+    
+maze_2_fruit_entry_table:
+maze_3_fruit_entry_table:
+maze_4_fruit_entry_table:
+maze_2_fruit_exit_table:
+maze_3_fruit_exit_table:
+maze_4_fruit_exit_table:
+    
+    ; tilex,tiley start
+    ; then moves, zero terminated
+maze_1_fruit_entry_1
+    dc.w    X_MAX/8,17+3
+    dc.w    -5,0,0,3,-9,0,0,-3,-6,0,0,-6,9,0,0,6
+    dc.w    -9,0,0,-6,9,0,0,6
+    dc.l    0
+maze_1_fruit_entry_2
+    dc.w    0,8
+    dc.w    0
+
+maze_1_fruit_exit_1
+    dc.w    0,17
+    dc.w    0
+    
+
 
 
 

@@ -3,8 +3,9 @@ from PIL import Image
 
 sprites_dir = "sprites"
 
+tunnels = [[(8,3),(17,3)],[(1,6),(23,3)],[(6,1)],[(10,4)]]
+
 def process_mazes():
-    tunnels = [[(8,3),(17,3)],[(1,6),(23,3)],[(6,1)],[(10,4)]]
     colors = []
     with open("../src/maze_data.s","w") as fw:
 
@@ -17,9 +18,9 @@ def process_mazes():
 
         fw.write("\n")
 
-        fw.write("tunnel_y_table:\n")
+        fw.write("fruit_path_table:\n")
         for i in list(range(len(tunnels)))+[2,3]:
-            fw.write("\tdc.l\tmaze_{}_tunnel_y\n".format(i+1))
+            fw.write("\tdc.l\tmaze_{}_fruit_entry_table\n".format(i+1))
 
         fw.write("\n")
 
@@ -114,15 +115,6 @@ def process_mazes():
             fw.write("\tdc.w\t${:x}  ; outline\n".format(torgb4(outline_color)))
             fw.write("\tdc.w\t${:x}  ; fill\n".format(torgb4(fill_color)))
             fw.write("\tdc.w\t{}    ; total nb dots\n\n".format(nb_dots[i-1]))
-            fw.write("\nmaze_{}_tunnel_y:\n".format(i))
-
-
-            tcopy = [t[0] for t in tunnel]
-            # now all tunnel arrays have 2 elements
-            if len(tcopy)==1:
-                tcopy.append(tcopy[0])
-
-            fw.write("\tdc.w\t${:x},${:x}  ; tunnel y\n".format(*tcopy))
 
 
             # now dump each maze with its own palette
