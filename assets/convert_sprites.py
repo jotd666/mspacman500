@@ -18,9 +18,10 @@ def process_mazes():
 
         fw.write("\n")
 
-        fw.write("fruit_path_table:\n")
-        for i in list(range(len(tunnels)))+[2,3]:
-            fw.write("\tdc.l\tmaze_{}_fruit_entry_table\n".format(i+1))
+        for e in ["entry","exit"]:
+            fw.write("fruit_path_{}_table:\n".format(e))
+            for i in list(range(len(tunnels)))+[2,3]:
+                fw.write("\tdc.l\tmaze_{}_fruit_{}_table\n".format(i+1,e))
 
         fw.write("\n")
 
