@@ -2286,9 +2286,22 @@ draw_bonuses:
 erase_bonus
     move.w  bonus_previous_y(pc),d1
     bmi.b   .ignore
-    move.w  bonus_previous_x(pc),d0 
+    move.w  bonus_previous_x(pc),d0
+        
     lea     empty_16x16_bob,a0
-    bra.b internal_bonus_draw
+    bsr.b internal_bonus_draw
+    ; now redraw the dot
+    move.w  bonus_previous_x(pc),d0
+    move.w  bonus_previous_y(pc),d1
+    add.w   #8,d1
+    bsr     refresh_dot
+    sub.w   #16,d1
+    bsr     refresh_dot
+    move.w  bonus_previous_y(pc),d1
+    add.w   #8,d0
+    bsr     refresh_dot
+    sub.w   #16,d0
+    bsr     refresh_dot
 .ignore
     rts
         
@@ -2512,8 +2525,7 @@ draw_dots:
     dbf d0,.copy
 
     ; start with an offset (skip the fake 3 first rows)
-    lea dot_table+(Y_START/8)*NB_TILES_PER_LINE,a0
-    
+    lea dot_table+(Y_START/8)*NB_TILES_PER_LINE,a0    
     lea	screen_data+DOT_PLANE_OFFSET,a1
     
     move.w  #NB_TILE_LINES-1-(Y_START/8),d0    
@@ -2564,6 +2576,37 @@ clear_power_pill
     clr.b  (NB_BYTES_PER_LINE*7,a1)
     rts
 
+; what: draw dot if needed (refresh after overwrite)
+; < D0: x
+; < D1: y
+; trashes a0
+
+refresh_dot:
+    movem.l d0-d2,-(a7)
+    lea dot_table,a1
+    ; apply x,y offset
+    lsr.w   #3,d1       ; 8 divide
+    move.w  d1,d2   ; save y tile
+    lsl.w   #5,d1       ; times 32
+    lsr.w   #3,d0   ; x in bytes, will be handy if redraw is needed
+    add.w   d1,a1
+    tst.b  (a1,d0.w)
+    bmi.b   .out
+    beq.b   .out
+
+    ; there is a pill there, draw it
+    lea mul40_table(pc),a1
+    sub.w   #3,d2
+    lsl.w   #4,d2   ; *8*2
+    add.w  (a1,d2.w),d0
+
+    lea screen_data+DOT_PLANE_OFFSET,a1
+    add.w   d0,a1   ; add x+y*40
+    bsr     draw_dot
+.out
+    movem.l (a7)+,d0-d2
+    rts        
+    
 draw_dot:
     move.b  #%0011000,(NB_BYTES_PER_LINE*3,a1)
     move.b  #%0011000,(NB_BYTES_PER_LINE*4,a1)
@@ -3076,8 +3119,8 @@ update_all
     
 update_bonus
     eor.b   #1,.needs_update
-    ;;bne.b   .doit
-    ;;rts
+    bne.b   .doit
+    rts
 .doit
     cmp.w   #2,bonus_active
     bne.b   .active
@@ -5221,8 +5264,7 @@ erase_mspacman
     ; just clear every possible pixel that could remain whatever the direction was/is
     
     bsr wait_blit   ; (just in case the blitter didn't finish writing pacman)
-    ; restore dots around mspacman if not eaten
-    ;bsr restore_dots
+
 
     ; erase is optimized. Mrs pacman uses 3 colors on 3 planes, but the blue color
     ; is (on purpose) on the same level as the second maze plane. Since the color appears
@@ -5340,78 +5382,6 @@ draw_mspacman:
     ; planes, saves some bandwidth!!
     bra blit_plane
 
-
-; what: redraws dots around mspacman/moving bonus
-; < D0: X
-; < D1: Y
-
-restore_dots
-    ; don't restore anything on edge x coords
-    cmp.w   #8,d0
-    bcs.b   .no_restore
-    cmp.w   #(NB_BYTES_PER_MAZE_LINE+2)*8,d0
-    bcc.b   .no_restore
-    
-    movem.l d0-d3/a0-a1,-(a7)
-    lea dot_table,a0
-    ; apply x,y offset
-    move.w  d1,d3       ; save y
-    lsr.w   #3,d1       ; 8 divide
-    lsl.w   #5,d1       ; times 32
-    add.w   d1,a0
-    lsr.w   #3,d0   ; 8 divide
-    move.w  d0,d2   ; x-offset in bytes
-    add.w   d0,a0
-    ; look around the center
-    move.b  (1,a0),d0
-    beq.b   .skip_right
-    bsr.b .restore
-.skip_right
-    move.b  (-1,a0),d0
-    beq.b   .skip_left
-    bsr.b .restore
-.skip_left
-    move.b  (NB_BYTES_PER_MAZE_LINE,a0),d0
-    beq.b   .skip_down
-    bsr.b .restore
-.skip_down
-    move.b  (-NB_BYTES_PER_MAZE_LINE,a0),d0
-    beq.b   .skip_up
-    bsr.b .restore
-.skip_up
-
-    movem.l (a7)+,d0-d3/a0-a1
-.no_restore
-    rts
-.restore
-    lea screen_data+DOT_PLANE_OFFSET,a1
-    add.w   d2,a1
-    lea     mul40_table(pc),a0
-    add.w   d3,d3
-    add.w  (a0,d3.w),a1
-    
-    tst.b   d0
-    bmi.b   .clear
-    clr.b   (a1)
-    clr.b   (NB_BYTES_PER_LINE,a1)
-    clr.b   (NB_BYTES_PER_LINE*2,a1)
-    move.b  #%0011000,(NB_BYTES_PER_LINE*3,a1)
-    move.b  #%0011000,(NB_BYTES_PER_LINE*4,a1)
-    clr.b   (NB_BYTES_PER_LINE*5,a1)
-    clr.b   (NB_BYTES_PER_LINE*6,a1)
-    clr.b   (NB_BYTES_PER_LINE*7,a1)
-
-    bra.b   .clear_rest_of_planes
-.clear
-    ; clear dot
-    bsr clear_power_pill
-.clear_rest_of_planes
-    add.l   #SCREEN_PLANE_SIZE,a1
-    bsr clear_power_pill
-    add.l   #SCREEN_PLANE_SIZE,a1
-    bra clear_power_pill
-    ; TODO: with fruit clear other plane too
-    rts
     
 ; < d0.w: x
 ; < d1.w: y
