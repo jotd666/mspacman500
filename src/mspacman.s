@@ -123,7 +123,7 @@ FOURTH_INTERMISSION_LEVEL = 13
 ;;INTERMISSION_TEST = THIRD_INTERMISSION_LEVEL
 
 ; if set skips intro and start music, game starts almost immediately
-DIRECT_GAME_START
+;DIRECT_GAME_START
 
 ; temp if nonzero, then records game input, intro music doesn't play
 ; and when one life is lost, blitzes and a0 points to move record table
@@ -888,8 +888,6 @@ init_ghosts
     ; init ghost dot count table, start with pinky
     ; pinky exits right away unless a life is lost
     move.l  #ghosts+1*Ghost_SIZEOF,ghost_which_counts_dots
-
-    
 .igloop
     ; copy all 4 colors (back them up)
     move.l (a3)+,palette(a0)
@@ -1189,7 +1187,10 @@ update_ghost_mode_timer
 init_player
     ; in case player was killed / level completed 
     ; when bonus was active
+    tst.w   bonus_active
+    beq.b   .no_bonus_remove
     bsr remove_bonus
+.no_bonus_remove
     bsr remove_bonus_score
     
     lea player(pc),a0
@@ -1497,12 +1498,12 @@ draw_ghosts:
     rts
 .no_ghost_eat
     move.w  player_killed_timer(pc),d6
-    bmi.b   .normal
+    bmi.b   draw_ghosts_normal
     cmp.w   #PLAYER_KILL_TIMER-NB_TICKS_PER_SEC,d6
-    bcc.b   .normal
+    bcc.b   draw_ghosts_normal
     ; clear the ghosts sprites after 1 second when pacman is killed
     bra.b hide_sprites
-.normal
+draw_ghosts_normal
     lea ghosts(pc),a0
     moveq.l #3,d7
 
@@ -1676,7 +1677,6 @@ draw_ghosts:
     move.w   direction(a0),d2
     lea ghost_eyes(pc),a2       ; palette
 
-    ; TODO set black tunnel sprite proper palette in copperlist
     bra.b   .end_anim
      
 draw_all
@@ -1769,8 +1769,8 @@ PLAYER_ONE_Y = 102-14
 	
 	; now draw bonus with full cookie cut
 	; to avoid to overwrite mspacman blit
-    tst.w   bonus_active
-    beq.b   .no_bonus_draw
+    cmp.w   #1,bonus_active
+    bne.b   .no_bonus_draw
     
     bsr draw_bonus_in_maze
 .no_bonus_draw
@@ -1786,25 +1786,21 @@ PLAYER_ONE_Y = 102-14
     bsr     draw_last_life
 .no_extra_life
     cmp.w   #MSG_HIDE,bonus_score_display_message
-    bra.b   .no_bonus_score_disappear       ; disabled right now
+    bne.b   .no_bonus_score_disappear       ; disabled right now
     clr.w   bonus_score_display_message
-    lea bonus(pc),a0
-    move.w  xpos(a0),d0
-    move.w  ypos(a0),d1
-    move.w  #5,d2
-    ; we know that this color is only on 2 planes
-    ; (convieniently 2 planes where pacman isn't drawn!)
-    lea	screen_data,a1
-    move.w  #3,d3
-    bsr clear_plane_any
-    add.l  #SCREEN_PLANE_SIZE*3,a1
-    bsr clear_plane_any
+    move.w  fruit_score_index(pc),d0
+    moveq   #0,d1
+    bsr draw_bonus_score
+    bra.b   .no_bonus_score_appear
 .no_bonus_score_disappear    
 
     cmp.w   #MSG_SHOW,bonus_score_display_message
     bne.b   .no_bonus_score_appear
-    clr.w   bonus_score_display_message
+    ; don't ack message, we need to draw all the time
+    ; because of fruit clear at the same time
+    ; clr.w   bonus_score_display_message
     move.w  fruit_score_index(pc),d0
+    moveq   #1,d1
     bsr draw_bonus_score
 .no_bonus_score_appear
 
@@ -2001,6 +1997,29 @@ draw_start_screen
     move.w  #$0fb5,d2
     bsr write_color_string
     
+    lea .opo_string(pc),a0
+    move.w  #48+16,d0
+    move.w  #116,d1
+    move.w  #$0fb5,d2
+	
+    bsr write_color_string
+    lea .bp1_string(pc),a0
+    move.w  #16,d0
+    move.w  #192-24,d1
+    move.w  #$d94,d2
+    bsr write_color_string
+    
+    bra write_midway_stuff
+    
+.psb_string
+    dc.b    "PUSH START BUTTON",0
+.opo_string:
+    dc.b    "1 PLAYER ONLY",0
+.bp1_string
+    dc.b    "ADDITIONAL ## AT 10000 pts",0
+    even
+    
+write_midway_stuff
     ; write midway logo
     lea     midway,a0
     move.w  #48,d0
@@ -2019,120 +2038,76 @@ draw_start_screen
     add.l   #SCREEN_PLANE_SIZE,a1
     add.l   #192,a0      ; 32 but shifting!
     dbf d6,.loop
-
-    
-    lea .opo_string(pc),a0
-    move.w  #48+16,d0
-    move.w  #116,d1
-    move.w  #$0fb5,d2
-	
-    bsr write_color_string
-    lea .bp1_string(pc),a0
-    move.w  #16,d0
-    move.w  #192-24,d1
-    move.w  #$d94,d2			; TODO fix color brown
-    bsr write_color_string
    
     
-    lea .midway1_string(pc),a0
-    move.w  #92,d0
-    move.w  #172+36,d1
-    move.w  #$0f00,d2
-    bsr write_color_string
     lea .midway2_string(pc),a0
     move.w  #112,d0
     move.w  #172+36+16,d1
     move.w  #$0f00,d2
     bsr write_color_string
+    bsr wait_blit
     
-    rts
-.psb_string
-    dc.b    "PUSH START BUTTON",0
-.opo_string:
-    dc.b    "1 PLAYER ONLY",0
-.bp1_string
-    dc.b    "ADDITIONAL ## AT 10000 pts",0
+    lea .midway1_string(pc),a0
+    move.w  #92,d0
+    move.w  #172+36,d1
+    move.w  #$0f00,d2
+    bra write_color_string
+    
 .midway1_string
     dc.b    "c MIDWAY MFG CO",0
 .midway2_string
     dc.b    "1980/1981",0
     even
+    
+DOT_FRAME_OFFSET = 3*SCREEN_PLANE_SIZE+60/8+(88-Y_START)*NB_BYTES_PER_LINE
+
 draw_intro_screen
     tst.w   state_timer
     bne.b   .no_first
-    lea character_nickname_string(pc),a0
-    move.w  #X_TEXT,d0
-    move.w  #Y_TEXT,d1
-    move.w  #$fff,d2
-    bra.b write_color_string
-.no_first
-    
-    DRAW_GHOST_INFO red,0
-    DRAW_GHOST_INFO pink,1
-    DRAW_GHOST_INFO cyan,2
-    DRAW_GHOST_INFO orange,3
 
-    cmp.w   #DEMO_DOT_SCORE_TIMER,state_timer
-    bne.b   .no_dot_score
-    lea	screen_data+DOT_PLANE_OFFSET+X_DOT/8+Y_DOT*NB_BYTES_PER_LINE,a1
-    bsr draw_dot
-    move.w  #X_DOT,d0
-    move.w  #Y_DOT,d1
-    lea     ten_pts_string(pc),a0
-    move.w  #$FFF,d2
-    bsr write_color_string
-   
-    
-    lea	screen_data+DOT_PLANE_OFFSET+X_DOT/8+(Y_DOT+16)*NB_BYTES_PER_LINE,a1
-    lea  powerdots+4(pc),a0
-    move.l  a1,(a0)+
-    bsr draw_power_pill
-    ; 2 other power dots invalidated
-    clr.l   (a0)+
-    clr.l   (a0)+
-    move.w  #X_DOT,d0
-    move.w  #Y_DOT+16,d1
-    lea     fifty_pts_string(pc),a0
-    move.w  #$FFF,d2
-    bsr write_color_string
-.no_dot_score
+    lea    .title(pc),a0
+    move.w  #80,d0
+    move.w  #56-Y_START,d1
+    move.w  #$0fb5,d2
+    bsr write_color_string    
+    bsr write_midway_stuff
 
-    cmp.w   #DEMO_POWER_PILL_TIMER,state_timer
-    bne.b   .no_power_pill
-    lea	screen_data+DOT_PLANE_OFFSET+X_DEMO_POWER_PILL/8+Y_PAC_ANIM*NB_BYTES_PER_LINE,a1
-    lea  powerdots(pc),a0
-    move.l  a1,(a0)+
-    bsr draw_power_pill
-        
-.no_power_pill
+    move.b  #$0C,d0
+    move.b  #$C0,d1
+    lea screen_data+DOT_FRAME_OFFSET,a1
+    move.l  a1,a2
+    moveq   #16,d2
+.loopv
+    move.b  d0,(a2)
+    move.b  d0,(NB_BYTES_PER_LINE,a2)
+    or.b  d1,(17,a2)
+    or.b  d1,(17+NB_BYTES_PER_LINE,a2)
+    add.w   #NB_BYTES_PER_LINE*4,a2
+    dbf d2,.loopv
+    moveq   #16,d1
+.looph
+    move.b  d0,(a1)
+    move.b  d0,(NB_BYTES_PER_LINE,a1)
+    move.b  d0,(64*NB_BYTES_PER_LINE,a1)
+    move.b  d0,(65*NB_BYTES_PER_LINE,a1)
+    addq.w  #1,a1
+    move.b  #$CC,d0
+    dbf d1,.looph
+    ; first update, don't draw ghosts or anything as they're not initialized
+    ; (draw routine is called first)
+    rts
     
-    cmp.w   #DEMO_PACMAN_TIMER,state_timer
-    bcs.b   .dont_draw_characs
-    ; blit pacman
-    bsr draw_ghosts
-    bsr draw_mspacman
+.no_first    
+    bsr draw_ghosts_normal
     
-    ; animate dots
-    bsr animate_power_pills
-.dont_draw_characs    
+ 
     rts
     
 .nb_written
     dc.w    0
-    
-.draw_ghost_bob
-    lea ghost_bob_table,a1
-    move.w  d0,d3
-    move.w  d0,d2
-    add.w   d2,d2
-    add.w   d2,d2
-    move.l  (a1,d2.w),a0    ; ghost bob    
-    move.w  #X_TEXT-24,d0
-    move.w  #Y_TEXT+12,d1
-    mulu.w  #GHOST_DESC_HEIGHT,d3
-    add.w   d3,d1
-    
-    bra blit_4_planes
+.title
+    dc.b    '$MS PAC-MAN"',0
+    even
     
 .draw_ghost_text
     move.l character_text_table(pc),a0
@@ -2159,27 +2134,38 @@ draw_intro_screen
 
     
 ; < D0: 0,1,2,... score index 100,200,500,700,1000,2000,5000
-; TODO draw @ bonus coord
-
+; < D1: 0: clear, != 0: draw
 draw_bonus_score:
-
     lsl.w   #6,d0       ; *64
     lea bonus_scores,a0
     add.w   d0,a0
-    lea	screen_data+100,a1  ; TEMP!!!
+    move.l  a0,a3   ; mask = data
+    tst d1
+    bne.b   .cont
+    lea empty_16x16_bob,a0
+.cont
+    move.w  xpos+bonus(pc),d3
+    move.w  ypos+bonus(pc),d4
+    sub.w  #8+Y_START,d4
+    sub.w  #8+X_START,d3
+    lea	screen_data,a1
     move.l  a1,a2
 
-    moveq.w  #10,d0
-
-    moveq.l  #0,d1
+    move.w  d3,d0
+    move.w  d4,d1
     moveq.l #-1,d2
-    bsr blit_plane
+    
+    ; this plane: white
+    bra blit_plane_cookie_cut
+    
+    
     lea (SCREEN_PLANE_SIZE*3,a2),a1
-    moveq.l  #10,d0
+    move.l  a1,a2
 
-    moveq.l  #0,d1
+    move.w  d3,d0
+    move.w  d4,d1
     moveq.l #-1,d2
-    bsr blit_plane
+    bsr blit_plane_cookie_cut
     
     rts
     
@@ -2322,7 +2308,7 @@ internal_bonus_draw
     sub.w  #8+X_START,d0
     bpl.b   .no_left
     ; d0 is negative
-    moveq   #1,d5   ; flag partial draw   
+    ;;moveq   #1,d5   ; flag partial draw   
     neg.w   d0
     lsr.l   d0,d2
     neg.w   d0
@@ -2334,7 +2320,7 @@ internal_bonus_draw
     move.w  d0,d4    
     sub.w   #X_MAX-24-X_START,d4
     bmi.b   .pdraw
-    moveq   #1,d5   ; flag partial draw
+    ;;moveq   #1,d5   ; flag partial draw
     lsl.l   d4,d2
     swap    d2
     clr.w   d2
@@ -3124,8 +3110,11 @@ update_bonus
 .doit
     cmp.w   #2,bonus_active
     bne.b   .active
-    ; 2 was set so the clear routine can work a last time
+    ; 2 was set on previous update so the clear routine could work a last time
     clr.w   bonus_active
+    ; invalidate previous positions
+    ; y (and probably x too) cannot be negative, ever
+    move.l  #-1,bonus_previous_x    ; x&y negative
     rts
 .active
     lea bonus(pc),a0
@@ -3183,10 +3172,7 @@ update_bonus
     dc.w    0
         
 remove_bonus:
-    clr.w   bonus_active
-    ; invalidate previous positions
-    ; y (and probably x too) cannot be negative, ever
-    move.l  #-1,bonus_previous_x    ; x&y negative
+    move.w   #2,bonus_active
     rts
 remove_bonus_score
     move.w  #MSG_HIDE,bonus_score_display_message      ; tell draw routine to clear
@@ -3220,8 +3206,13 @@ check_pac_bonus_collision
 .nomatch
     rts
     
-.collision
-    ; remove the bonus
+.collision    
+    bsr remove_bonus
+    lea bonus_eaten_sound(pc),a0
+    bsr play_fx
+    ; show score
+    move.w  #BONUS_SCORE_TIMER_VALUE,bonus_score_timer
+    move.w  #MSG_SHOW,bonus_score_display_message      ; tell draw routine to show score
     rts
     
 ; is done after both pacman & ghosts have been updated, maybe allowing for the
@@ -3293,29 +3284,70 @@ a_ghost_was_eaten:
     ; exits as soon as a collision is found
     rts
 update_intro_screen
-    add.w   #1,state_timer
-    cmp.w   #4,next_ghost_score
-    bne.b   .remaining_ghosts
-    ; wait a while and go in press button to start game
-    move.w  state_timer(pc),d1
-    sub.w   last_ghost_eaten_state_timer(pc),d1
-    cmp.w   #NB_TICKS_PER_SEC,d1
-    bcs.b   .wait
-    ; change state
-    clr.w   state_timer
-    move.w  #STATE_GAME_START_SCREEN,current_state
-    ; in demo mode
-    st.b    demo_mode
+    tst.w   state_timer
+    bne.b   .no_first
+    bsr init_player
+    moveq.l #0,d0
+    bsr init_ghosts
+    lea ghosts(pc),a0
+    moveq.w #3,d0
+.loop
+    move.w  #260,xpos(a0)
+    move.w  #170,ypos(a0)
+    move.w  #LEFT,direction(a0)
+    add.w  #Ghost_SIZEOF,a0
+    dbf d0,.loop
     
+    move.w  #92,.y_target
+    clr.w   .ghost_to_update    
+.no_first
+    add.w   #1,state_timer
+
+    
+    move.w  .ghost_to_update(pc),d0
+    cmp.w   #4*Ghost_SIZEOF,d0
+    beq.b   .no_ghost
+    
+    lea ghosts(pc),a0
+    add.w   d0,a0
+
+    ; animate ghost
+    move.w  frame(a0),d2
+    addq.w  #1,d2
+    and.w   #$F,d2
+    move.w  d2,frame(a0)
+    
+    cmp.w   #LEFT,direction(a0)
+    bne.b   .up
+    sub.w   #1,xpos(a0)
+    cmp.w   #80-16,xpos(a0)
+    bne.b   .no_dirchange
+    move.w  #UP,direction(a0)
+    bra.b   .no_dirchange
+.up
+    move.w  ypos(a0),d0
+    sub.w   #1,d0
+    move.w  d0,ypos(a0)
+    cmp.w   .y_target(pc),d0
+    bne.b   .no_dirchange
+.next_ghost
+    add.w   #Ghost_SIZEOF,.ghost_to_update
+    add.w   #16,.y_target
+.no_dirchange
+    
+.no_ghost
+
 .wait
     rts
+.ghost_to_update
+    dc.w    0
+.y_target
+    dc.w    0
+    
 .remaining_ghosts
     cmp.w   #DEMO_PACMAN_TIMER,state_timer
     bne.b   .no_pac_demo_anim_init
     clr.w   .skip_3_frames
-    bsr init_player
-    moveq.l #0,d0
-    bsr init_ghosts
     lea player(pc),a2
     clr.w   .move_period
     move.w  #X_MAX,xpos(a2)
@@ -4733,7 +4765,6 @@ update_pac
     ; fright mode just ended: resume normal sound loop
     bsr start_background_loop
 .no_fright1
-
     tst.w   bonus_score_timer    
     beq.b   .no_fruit_score
     subq.w  #1,bonus_score_timer
@@ -4870,10 +4901,10 @@ update_pac
 
     cmp.b   #1,d2
     beq.b   .simple
-    cmp.b   #2,d2
-    beq.b   .power
+;    cmp.b   #2,d2
+;    beq.b   .power
     ; bonus (fruit)
-    bra.b   .bonus_eaten
+;    bra.b   .bonus_eaten
 .power
     ; save A1
     move.l  A1,A2
@@ -5010,14 +5041,6 @@ update_pac
     bsr     add_to_score
 .end_pac
     rts
-.bonus_eaten:
-    bsr remove_bonus
-    lea bonus_eaten_sound(pc),a0
-    bsr play_fx
-    ; show score
-    move.w  #BONUS_SCORE_TIMER_VALUE,bonus_score_timer
-    move.w  #MSG_SHOW,bonus_score_display_message      ; tell draw routine to show score
-    bra.b   .other
 
 .show_fruit
 	bsr activate_bonus
@@ -6046,6 +6069,12 @@ write_string:
     moveq.l #0,d2
     bra.b   .wl
 .noquote
+    cmp.b   #'$',d2
+    bne.b   .noquote2
+    lea quote2(pc),a2
+    moveq.l #0,d2
+    bra.b   .wl
+.noquote2
     cmp.b   #'c',d2
     bne.b   .nocopy
     lea copyright(pc),a2
@@ -6438,6 +6467,8 @@ dash
     incbin  "dash.bin"
 quote
     incbin  "quote.bin"
+quote2
+    incbin  "quote2.bin"
 copyright
     incbin  "copyright.bin"
 pts_0

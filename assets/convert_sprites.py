@@ -284,6 +284,7 @@ def process_fonts():
     name_dict["digit_row_0_10"] = "slash"
     name_dict["digit_row_0_11"] = "dash"
     name_dict["digit_row_0_12"] = "quote"
+    name_dict["digit_row_0_13"] = "quote2"
     # we first did that to get the palette but we need to control
     # the order of the palette
 

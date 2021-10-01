@@ -10,8 +10,15 @@ REQUIRES:
 TODO: 
 
 - mazes: find all colors of each maze for all levels/find the pattern
-- wrong death sequence
-- mrspacman eats: stays on screen below the score!!
+- intro
+- fruit appears: yellow dot on right bottom corner
+- 3 other mazes with fruit entry/exit paths
+- exit: clear fruit properly
+- maze flash when level ends
+- fruit bounce
+- rip fruit noise (subtract sound loop)
+- rip lead instrument from 2nd tune (without bass)
+
 
 FEATURES:
 
@@ -25,14 +32,9 @@ FEATURES:
 
 
     The game has four different colorful mazes that alternate. The orange maze appears in levels 1 and 2, the light blue maze appears in levels 3, 4, and 5, the brown maze appears in levels 6 through 9, and the dark blue maze appears in levels 10 through 13. Starting with level 14, the last two maze configurations alternate between each other every 4th level.
-    The Fruits are now cherries, strawberries, oranges, pretzels, apples, pears, and bananas, respectively. After the banana appears, the fruit prizes are chosen at random.
     The fruit bounces around the screen instead of remaining stationary below the ghost pen, starting from one of the tunnel entrances and leaving through another if not eaten.
     The intermissions have been changed to "Acts". The first one shows how Pac-Man and Ms. Pac-Man first meet, the second shows the two chasing each other around the screen, and the third shows Pac-Man and Ms. Pac-Man awaiting the arrival of Junior.
     The orange ghost (originally named "Clyde") is now named "Sue".
-    The ghosts do not move in "scatter" and "chase" cycles as they did in the original game; Blinky and Pinky will move randomly and Inky and Sue will head for their "scatter" corners only during first behavior mode of a round. From there, while they will change direction occasionally, they will remain in constant attack.
-    There are no longer any paths that the ghosts cannot travel through.
-    Tunnels do not slow the ghosts down after Round 3.
-    This is the first Pac-Man game to have 2 female ghosts, Pinky and Sue.￼
     
 
 MINOR ISSUES:
