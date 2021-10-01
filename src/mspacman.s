@@ -2059,7 +2059,7 @@ write_midway_stuff
     dc.b    "1980/1981",0
     even
     
-DOT_FRAME_OFFSET = 3*SCREEN_PLANE_SIZE+60/8+(88-Y_START)*NB_BYTES_PER_LINE
+DOT_FRAME_OFFSET = 60/8+(88-Y_START)*NB_BYTES_PER_LINE
 
 draw_intro_screen
     tst.w   state_timer
@@ -2072,35 +2072,137 @@ draw_intro_screen
     bsr write_color_string    
     bsr write_midway_stuff
 
-    move.b  #$0C,d0
-    move.b  #$C0,d1
-    lea screen_data+DOT_FRAME_OFFSET,a1
-    move.l  a1,a2
-    moveq   #16,d2
-.loopv
-    move.b  d0,(a2)
-    move.b  d0,(NB_BYTES_PER_LINE,a2)
-    or.b  d1,(17,a2)
-    or.b  d1,(17+NB_BYTES_PER_LINE,a2)
-    add.w   #NB_BYTES_PER_LINE*4,a2
-    dbf d2,.loopv
-    moveq   #16,d1
-.looph
-    move.b  d0,(a1)
-    move.b  d0,(NB_BYTES_PER_LINE,a1)
-    move.b  d0,(64*NB_BYTES_PER_LINE,a1)
-    move.b  d0,(65*NB_BYTES_PER_LINE,a1)
-    addq.w  #1,a1
-    move.b  #$CC,d0
-    dbf d1,.looph
+
+    
     ; first update, don't draw ghosts or anything as they're not initialized
     ; (draw routine is called first)
     rts
     
 .no_first    
     bsr draw_ghosts_normal
+
+    move.b  #$0C,d0
+    move.b  #$C0,d1
+    lea screen_data+DOT_FRAME_OFFSET+SCREEN_PLANE_SIZE,a1   ; dot offset white plane 1    
+    move.l  a1,a2
+    moveq   #16,d2
+.loopv
+    ; clear white
+    clr.b   (a2)
+    clr.b   (NB_BYTES_PER_LINE,a2)
+    clr.b   (SCREEN_PLANE_SIZE,a2)
+    clr.b   (SCREEN_PLANE_SIZE+NB_BYTES_PER_LINE,a2)
+    clr.b   (17,a2)
+    clr.b   (NB_BYTES_PER_LINE+17,a2)
+    clr.b   (SCREEN_PLANE_SIZE+17,a2)
+    clr.b   (SCREEN_PLANE_SIZE+NB_BYTES_PER_LINE+17,a2)
+    ; set red
+    move.b  d0,(SCREEN_PLANE_SIZE*2,a2)
+    move.b  d0,(SCREEN_PLANE_SIZE*2+NB_BYTES_PER_LINE,a2)
+    move.b  d1,(SCREEN_PLANE_SIZE*2+17,a2)
+    move.b  d1,(SCREEN_PLANE_SIZE*2+17+NB_BYTES_PER_LINE,a2)
+    add.w   #NB_BYTES_PER_LINE*4,a2
+    dbf d2,.loopv
+    moveq   #16,d1
+.looph
+    ; clear white
+    clr.b  (a1)
+    clr.b  (NB_BYTES_PER_LINE,a1)
+    clr.b  (64*NB_BYTES_PER_LINE,a1)
+    clr.b  (65*NB_BYTES_PER_LINE,a1)
+    clr.b  (SCREEN_PLANE_SIZE,a1)
+    clr.b  (SCREEN_PLANE_SIZE+NB_BYTES_PER_LINE,a1)
+    clr.b  (SCREEN_PLANE_SIZE+64*NB_BYTES_PER_LINE,a1)
+    clr.b  (SCREEN_PLANE_SIZE+65*NB_BYTES_PER_LINE,a1)
+    ; set red
+    move.b  d0,(SCREEN_PLANE_SIZE*2,a1)
+    move.b  d0,(SCREEN_PLANE_SIZE*2+NB_BYTES_PER_LINE,a1)
+    move.b  d0,(SCREEN_PLANE_SIZE*2+64*NB_BYTES_PER_LINE,a1)
+    move.b  d0,(SCREEN_PLANE_SIZE*2+65*NB_BYTES_PER_LINE,a1)
+    addq.w  #1,a1
+    move.b  #$CC,d0
+    dbf d1,.looph
+
+
+    ; draw white dots / red dots
+    lea dot_positions(pc),a0
+    move.w  #5,d3
+    lea     mul40_table(pc),a3
+.dotloop
+    lea screen_data+DOT_FRAME_OFFSET,a1
+
+    clr.w   d0
+    move.b  (a0)+,d0    ; dot position
+    cmp.b   #34,d0
+    bcs.b   .horiz  ; upper horiz, address is okay, direction is left to right
+    cmp.b   #50,d0
+    bcs.b   .vert
+    cmp.b   #84,d0
+    bcs.b   .horiz_bottom
+    ; 84-100: vert left    
+    sub.w   #100,d0
+    neg.w   d0
     
- 
+    add.w   d0,d0
+    move.w  (a3,d0.w),d0    ; times 40
+    lsl.w   #2,d0       ; times 4
+    clr.b   d1
+    move.b  #$C,d2
+    bra.b   .red_done
+    
+
+.horiz_bottom
+    ; 50-84: sub & oppose: newx = 100-oldx
+    sub.w   #84,d0
+    neg.w   d0
+
+    add.w   #NB_BYTES_PER_LINE*64,a1
+    ; now same as upper
+
+    move.b  #$FF,d1    
+
+    bra.b   .horiz
+.vert
+    ; rightmost vertical
+    sub.b   #34,d0
+    add.w   d0,d0
+    move.w  (a3,d0.w),d0    ; times 40
+    lsl.w   #2,d0       ; times 4
+    add.w   #17,d0      ; right vertical
+    clr.b   d1
+    move.b  #$C0,d2
+    bra.b   .red_done
+.horiz
+    lsr.b   #1,d0   ; divide by 2, get relevant byte
+    bcc.b   .even   ; shifted out bit was 0: value was even
+    ; odd: 
+    ; clear red color on odd position
+    move.b  #$C0,d1
+    move.b  #$0C,d2
+    bra.b   .red_done
+.even
+    move.b  #$0C,d1
+    move.b  #$C0,d2
+.red_done
+    move.l  a1,a2
+    add.w   #3*SCREEN_PLANE_SIZE,a2
+    ; process red
+    move.b  d1,(a2,d0.w)
+    move.b  d1,NB_BYTES_PER_LINE(a2,d0.w)
+    ; clear white around
+    ; white
+    move.w  #1,d4
+    add.w   d0,a1
+.writeloop
+    add.w   #SCREEN_PLANE_SIZE,a1   
+    ; write white
+    move.b  d2,(a1)
+    move.b  d2,NB_BYTES_PER_LINE(a1)
+    dbf d4,.writeloop
+    
+.out
+    dbf d3,.dotloop
+
     rts
     
 .nb_written
@@ -3286,6 +3388,18 @@ a_ghost_was_eaten:
 update_intro_screen
     tst.w   state_timer
     bne.b   .no_first
+    ; first update: init everything
+    ; 6 moving white dots, moving on a 34x16 grid (100 dots)
+    ; spaced by roughly 16 dots
+    ; 1-d coord (0-99) is enough to position them
+    lea dot_positions(pc),a0
+    move.b  #7,d0
+    move.w  #5,d1
+.dotloop
+    move.b  d0,(a0)+
+    add.b   #16,d0
+    dbf d1,.dotloop
+    
     bsr init_player
     moveq.l #0,d0
     bsr init_ghosts
@@ -3303,6 +3417,19 @@ update_intro_screen
 .no_first
     add.w   #1,state_timer
 
+    ; increase dot positions (animate)
+    lea dot_positions(pc),a0
+    move.b  #7,d0
+    move.w  #5,d1
+.dotloop2
+    move.b  (a0),d0
+    addq.b  #1,d0
+    cmp.b   #100,d0
+    bne.b   .no100
+    clr.b   d0
+.no100
+    move.b  d0,(a0)+
+    dbf d1,.dotloop2
     
     move.w  .ghost_to_update(pc),d0
     cmp.w   #4*Ghost_SIZEOF,d0
@@ -6300,6 +6427,8 @@ maze_blink_nb_times
     dc.b    0
 nb_lives:
     dc.b    0
+dot_positions
+    ds.b    6,0
 quit_flag
     dc.b    0
 elroy_mode_lock:
