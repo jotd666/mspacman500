@@ -386,11 +386,6 @@ intro:
     move.w  #$7FFF,(intena,a5)
     move.w  #$7FFF,(intreq,a5)
 
-    ; small random to change ghosts names from time to time (1 out of 5 after a game over)
-    lea character_text_table_en(pc),a0
-
-    move.l  a0,character_text_table
-    
     bsr stop_background_loop
     
     bsr hide_sprites
@@ -2060,19 +2055,23 @@ write_midway_stuff
     even
     
 DOT_FRAME_OFFSET = 60/8+(88-Y_START)*NB_BYTES_PER_LINE
+WHITE_TEXT_X = 80
+WHITE_TEXT_Y = 104-Y_START
+GHOST_TEXT_X = WHITE_TEXT_X+16
+GHOST_TEXT_Y = WHITE_TEXT_Y+24
 
 draw_intro_screen
     tst.w   state_timer
     bne.b   .no_first
 
+    clr.w   .previous_ghost_color
+    clr.w   .latest_text_message
     lea    .title(pc),a0
     move.w  #80,d0
     move.w  #56-Y_START,d1
     move.w  #$0fb5,d2
     bsr write_color_string    
     bsr write_midway_stuff
-
-
     
     ; first update, don't draw ghosts or anything as they're not initialized
     ; (draw routine is called first)
@@ -2216,32 +2215,113 @@ draw_intro_screen
 .out
     dbf d3,.dotloop
 
+    move.w  intro_text_message(pc),d3
+    cmp.w   .latest_text_message(pc),d3
+    beq.b   .same    
+    move.w  d3,.latest_text_message
+    ; temp texts
+    cmp.w   #1,d3
+    bne.b   .no_with
+
+    move.w  #WHITE_TEXT_X,d0
+    move.w  #WHITE_TEXT_Y,d1
+    move.w  #$FFF,d2
+    lea .with(pc),a0
+    bsr write_color_string
+    bra.b   .no_with_clear
+.no_with
+    cmp.w   #3,d3
+    bne.b   .no_with_clear
+    move.w  #WHITE_TEXT_X,d0
+    move.w  #WHITE_TEXT_Y,d1
+    move.w  #$FFF,d2
+    lea .blank(pc),a0
+    bsr write_color_string
+.no_with_clear
+    cmp.w   #2,d3
+    bmi.b   .no_ghost
+    cmp.w   #6,d3
+    bcc.b   .no_ghost
+    sub.w   #2,d3
+    
+    move.w  .previous_ghost_color(pc),d2
+    beq.b   .no_prev
+    lea .blank(pc),a0
+    move.w  #GHOST_TEXT_X,d0
+    move.w  #GHOST_TEXT_Y,d1    
+    bsr write_color_string
+.no_prev
+    add.w   d3,d3
+    add.w   d3,d3
+    
+    lea .ghost_table(pc),a0
+    move.l  (a0,d3.w),a0
+    lea game_palette+34(pc),a1
+    add.w   d3,d3
+    move.w  (a1,d3.w),d2    ; ghost color
+    move.w  d2,.previous_ghost_color
+    move.w  #GHOST_TEXT_X,d0
+    move.w  #GHOST_TEXT_Y,d1    
+    bsr write_color_string
+    bra.b   .same
+.no_ghost
+    cmp.w   #6,d3
+    bne.b   .same
+    ; ms pacman
+    move.w  .previous_ghost_color(pc),d2
+    lea .blank(pc),a0
+    move.w  #GHOST_TEXT_X,d0
+    move.w  #GHOST_TEXT_Y,d1    
+    bsr write_color_string
+    lea .starring(pc),a0
+    move.w  #WHITE_TEXT_X,d0
+    move.w  #WHITE_TEXT_Y,d1
+    move.w  #$FFF,d2
+    bsr write_color_string
+    lea .mspacman(pc),a0
+    move.w  #WHITE_TEXT_X,d0
+    move.w  #GHOST_TEXT_Y,d1
+    move.w  #$0ff0,d2
+    bsr write_color_string
+    
+.same
+    cmp.w   #6,.latest_text_message
+    bne.b   .nomspac
+    bsr draw_mspacman
+.nomspac
     rts
     
-.nb_written
+.previous_ghost_color
+    dc.w    0
+.latest_text_message
     dc.w    0
 .title
     dc.b    '$MS PAC-MAN"',0
+.mspacman
+    dc.b    'MS PAC-MAN',0
+.starring
+    dc.b    'STARRING',0
+.with
+    dc.b    'WITH',0
+.blank
+    dc.b    '      ',0
+.blinky:
+    dc.b    "BLINKY",0
+.pinky
+    dc.b    "PINKY",0
+.inky
+    dc.b    "INKY",0
+.sue
+    dc.b    " SUE",0
     even
+.ghost_table
+    dc.l    .blinky
+    dc.l    .pinky
+    dc.l    .inky
+    dc.l    .sue
     
 .draw_ghost_text
-    move.l character_text_table(pc),a0
-    move.w  d0,d3
-    move.w  d0,d4
-    lsl.w   #4,d3
-    lea  (a0,d3.w),a0    ; text table
-    move.l  (8,a0),d2   ; color
-    move.w  .nb_written(pc),d0
-    beq.b   .no_text_2
-    addq.l  #4,a0
-.no_text_2
-    clr.w   .nb_written
-    lsl.w   #3,d0
-    add.w  #X_TEXT+8,d0
-    move.w  #Y_TEXT+16,d1
-    move.l  (a0),a0 ; text
-    mulu.w  #GHOST_DESC_HEIGHT,d4
-    add.w   d4,d1
+
 
     bra write_color_string
 
@@ -3406,6 +3486,8 @@ update_intro_screen
     ; spaced by roughly 16 dots
     ; 1-d coord (0-99) is enough to position them
 
+    clr.w   intro_text_message
+    
     lea dot_positions(pc),a0
     move.b  #7,d0
     move.w  #5,d1
@@ -3415,6 +3497,11 @@ update_intro_screen
     dbf d1,.dotloop
     
     bsr init_player
+    lea player(pc),a0
+    move.w  #260,xpos(a0)
+    move.w  #170,ypos(a0)
+    move.w  #LEFT,direction(a0)
+    
     moveq.l #0,d0
     bsr init_ghosts
     lea ghosts(pc),a0
@@ -3426,8 +3513,8 @@ update_intro_screen
     add.w  #Ghost_SIZEOF,a0
     dbf d0,.loop
     
-    move.w  #92,.y_target
-    clr.w   .ghost_to_update    
+    move.w  #93,.y_target
+    move.w   #4*Ghost_SIZEOF,.ghost_to_update    
 .no_first
     add.w   #1,state_timer
 
@@ -3443,7 +3530,8 @@ update_intro_screen
     move.b  d0,(a0)+
     dbf d1,.dotloop2
 
-    
+    ; now ghosts
+
     move.w  .ghost_to_update(pc),d0
     cmp.w   #4*Ghost_SIZEOF,d0
     beq.b   .no_ghost
@@ -3471,13 +3559,33 @@ update_intro_screen
     cmp.w   .y_target(pc),d0
     bne.b   .no_dirchange
 .next_ghost
+    add.w   #1,intro_text_message       ; next ghost / mspacman
     add.w   #Ghost_SIZEOF,.ghost_to_update
-    add.w   #16,.y_target
+    add.w   #17,.y_target
 .no_dirchange
     
 .no_ghost
-
-.wait
+    cmp.w   #6,intro_text_message
+    bne.b   .nomspac
+    lea     player(pc),a4
+    cmp.w   #132,xpos(a4)
+    beq.b   .nomspac
+    bsr     animate_pacman
+    subq.w  #1,xpos(a4)
+.nomspac
+    move.w  state_timer(pc),d0
+    ; text handling
+    cmp.w   #58,d0
+    bne.b   .no_with
+    move.w  #1,intro_text_message
+    bra.b   .out_text
+.no_with
+    cmp.w   #60,d0
+    bne.b   .no_blinky
+    move.w  #2,intro_text_message
+    clr.w   .ghost_to_update    ; start ghost moves
+.no_blinky    
+.out_text
     rts
 .ghost_to_update
     dc.w    0
@@ -6371,6 +6479,8 @@ bonus_level_score:  ; *10
 ; general purpose timer for non-game states (intro, game over...)
 state_timer:
     dc.w    0
+intro_text_message:
+    dc.w    0
 last_ghost_eaten_state_timer
     dc.w    0
 fruit_score_index:
@@ -6640,40 +6750,7 @@ ready_string
     dc.b    "READY!",0
 ready_clear_string
     dc.b    "      ",0
-character_nickname_string:
-    dc.b    "CHARACTER / NICKNAME",0
 
-fifty_pts_string:
-    dc.b    "50 pts",0
-ten_pts_string:
-    dc.b    "10 pts",0
-    even
-character_text_table
-    dc.l    0
-character_text_table_en
-    dc.l    shadow,blinky,$F00,0
-    dc.l    speedy,pinky,$0fbf,0
-    dc.l    bashful,inky,$00ff,0
-    dc.l    pokey,clyde,$0fb5,0
-
-pinky:
-    dc.b    '"PINKY"',0
-    
-shadow:
-    dc.b    "-SHADOW    ",0
-blinky:
-    dc.b    '"BLINKY"',0
-speedy:
-    dc.b    "-SPEEDY    ",0
-
-bashful:
-    dc.b    "-BASHFUL   ",0
-inky:
-    dc.b    '"INKY"',0
-pokey:
-    dc.b    "-POKEY     ",0
-clyde:
-    dc.b    '"SUE"',0
 
     even
 
