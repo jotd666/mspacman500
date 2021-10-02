@@ -2133,9 +2133,10 @@ draw_intro_screen
 
     clr.w   d0
     move.b  (a0)+,d0    ; dot position
+
     cmp.b   #34,d0
     bcs.b   .horiz  ; upper horiz, address is okay, direction is left to right
-    cmp.b   #50,d0
+    cmp.b   #51,d0
     bcs.b   .vert
     cmp.b   #84,d0
     bcs.b   .horiz_bottom
@@ -2157,9 +2158,7 @@ draw_intro_screen
     neg.w   d0
 
     add.w   #NB_BYTES_PER_LINE*64,a1
-    ; now same as upper
-
-    move.b  #$FF,d1    
+    ; now same as upper    
 
     bra.b   .horiz
 .vert
@@ -2173,6 +2172,11 @@ draw_intro_screen
     move.b  #$C0,d2
     bra.b   .red_done
 .horiz
+    tst.w   d0
+    bne.b   .xx
+;;    addq.w  #1,d0
+.xx    
+    move.w  d0,d5   ; save for later
     lsr.b   #1,d0   ; divide by 2, get relevant byte
     bcc.b   .even   ; shifted out bit was 0: value was even
     ; odd: 
@@ -2184,6 +2188,15 @@ draw_intro_screen
     move.b  #$0C,d1
     move.b  #$C0,d2
 .red_done
+    lsr.b   #1,d5   ; divide by 2, get relevant byte
+    bne.b   .nospecial
+    ; special case 0
+    ; this is a hack to avoid more complex processing
+    ; the speed of the white dots is so great that the jump is
+    ; barely noticeable
+    and.w   #$F,d1
+    and.w   #$F,d2
+.nospecial
     move.l  a1,a2
     add.w   #3*SCREEN_PLANE_SIZE,a2
     ; process red
@@ -2194,7 +2207,7 @@ draw_intro_screen
     move.w  #1,d4
     add.w   d0,a1
 .writeloop
-    add.w   #SCREEN_PLANE_SIZE,a1   
+    add.w   #SCREEN_PLANE_SIZE,a1
     ; write white
     move.b  d2,(a1)
     move.b  d2,NB_BYTES_PER_LINE(a1)
@@ -3392,6 +3405,7 @@ update_intro_screen
     ; 6 moving white dots, moving on a 34x16 grid (100 dots)
     ; spaced by roughly 16 dots
     ; 1-d coord (0-99) is enough to position them
+
     lea dot_positions(pc),a0
     move.b  #7,d0
     move.w  #5,d1
@@ -3417,19 +3431,18 @@ update_intro_screen
 .no_first
     add.w   #1,state_timer
 
-    ; increase dot positions (animate)
+    ; decrease dot positions (animate)
     lea dot_positions(pc),a0
-    move.b  #7,d0
     move.w  #5,d1
 .dotloop2
     move.b  (a0),d0
-    addq.b  #1,d0
-    cmp.b   #100,d0
-    bne.b   .no100
-    clr.b   d0
+    subq.b  #1,d0
+    bpl.b   .no100
+    move.b   #99,d0
 .no100
     move.b  d0,(a0)+
     dbf d1,.dotloop2
+
     
     move.w  .ghost_to_update(pc),d0
     cmp.w   #4*Ghost_SIZEOF,d0
