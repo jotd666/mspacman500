@@ -11,10 +11,9 @@ TODO:
 
 - sounds: loops 2,3,4,5, eyes
 - fruit appears: yellow dot on right bottom corner/somewhere
-- maze flash when level ends wrong
 - fruit bounce
 - rip fruit noise (subtract sound loop)
-
+- intermission sequences
 - redraw score all the time (maze 1 tunnel)
 
 FEATURES:
@@ -28,10 +27,9 @@ FEATURES:
 - can run directly from shell or from whdload (fast machines/complex configurations)
 
 
-    The game has four different colorful mazes that alternate. The orange maze appears in levels 1 and 2, the light blue maze appears in levels 3, 4, and 5, the brown maze appears in levels 6 through 9, and the dark blue maze appears in levels 10 through 13. Starting with level 14, the last two maze configurations alternate between each other every 4th level.
-    The fruit bounces around the screen instead of remaining stationary below the ghost pen, starting from one of the tunnel entrances and leaving through another if not eaten.
-    The intermissions have been changed to "Acts". The first one shows how Pac-Man and Ms. Pac-Man first meet, the second shows the two chasing each other around the screen, and the third shows Pac-Man and Ms. Pac-Man awaiting the arrival of Junior.
-    The orange ghost (originally named "Clyde") is now named "Sue".
+    The intermissions have been changed to "Acts". The first one shows how Pac-Man and Ms. Pac-Man first meet,
+    the second shows the two chasing each other around the screen,
+    and the third shows Pac-Man and Ms. Pac-Man awaiting the arrival of Junior.
     
 
 MINOR ISSUES:

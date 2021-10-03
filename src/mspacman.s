@@ -123,7 +123,7 @@ FOURTH_INTERMISSION_LEVEL = 13
 ;;INTERMISSION_TEST = THIRD_INTERMISSION_LEVEL
 
 ; if set skips intro and start music, game starts almost immediately
-DIRECT_GAME_START
+;DIRECT_GAME_START
 
 ; temp if nonzero, then records game input, intro music doesn't play
 ; and when one life is lost, blitzes and a0 points to move record table
@@ -134,7 +134,7 @@ DIRECT_GAME_START
 
 EXTRA_LIFE_SCORE = 10000/10
 
-START_LEVEL = 11
+START_LEVEL = 1
 
 ; --------------- end debug/adjustable variables
 
@@ -5289,13 +5289,11 @@ update_pac
     and.b   #$F,d0
     bne.b   .no_sound_loop_increase ; optim
     
-    cmp.b   #$40,d4
+    cmp.b   #$50,d4
     beq.b   .sound_loop_increase
-    cmp.b   #$80,d4
+    cmp.b   #$A0,d4
     beq.b   .sound_loop_increase
-    cmp.b   #$C0,d4
-    beq.b   .sound_loop_increase
-    cmp.b   #$F0,d4
+    cmp.b   #$E0,d4
     bne.b   .no_sound_loop_increase
 .sound_loop_increase    
     add.w   #1,loop_index
@@ -7145,7 +7143,6 @@ SOUND_ENTRY:MACRO
     SOUND_ENTRY loop_2,-1,0
     SOUND_ENTRY loop_3,-1,0
     SOUND_ENTRY loop_4,-1,0
-    SOUND_ENTRY loop_5,-1,0
     SOUND_ENTRY loop_fright,-1,0
     SOUND_ENTRY loop_eyes,-1,0
     SOUND_ENTRY music_1,0,0
@@ -7154,7 +7151,7 @@ SOUND_ENTRY:MACRO
     dc.l    0
     
 loop_table:
-    dc.l    loop_1_sound,loop_2_sound,loop_3_sound,loop_4_sound,loop_5_sound
+    dc.l    loop_1_sound,loop_2_sound,loop_3_sound,loop_4_sound
 loop_index
     dc.w    0
     
@@ -7774,10 +7771,7 @@ loop_4_raw
     incbin  "loop_4.raw"
     even
 loop_4_raw_end
-loop_5_raw
-    incbin  "loop_5.raw"
-    even
-loop_5_raw_end
+
 loop_fright_raw
     incbin  "loop_fright.raw"
     even

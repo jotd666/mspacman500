@@ -49,6 +49,61 @@
    "width":32,
    "height":32
   },
+{
+   "name":"heart",
+   "frames":1,
+   "start_x":160,
+   "start_y":96
+  },
+{
+   "name":"stork",
+   "frames":2,
+   "start_x":96,
+   "start_y":0,
+   "width":32
+  },
+{
+   "name":"mrpac_right",
+   "frames":2,
+   "start_x":160,
+   "start_y":0
+  },
+{
+   "name":"mrpac_left",
+   "frames":2,
+   "start_x":160,
+   "start_y":16
+  },
+{
+   "name":"mrpac_full",
+   "frames":1,
+   "start_x":192,
+   "start_y":16
+  },
+{
+   "name":"mrpac_up",
+   "frames":2,
+   "start_x":160,
+   "start_y":32
+  },
+{
+   "name":"mrpac_down",
+   "frames":2,
+   "start_x":160,
+   "start_y":48
+  },
+{
+   "name":"baby_wrap",
+   "frames":1,
+   "start_x":96,
+   "start_y":16
+  },
+ {
+   "name":"junior",
+   "frames":1,
+   "start_x":112,
+   "start_y":16
+  },
  
  {
    "name":"ghost",
@@ -96,6 +151,14 @@
    "frames":7,
    "start_x":0,
    "start_y":144
+ },
+ {
+ "name":"clapper",
+   "frames":3,
+   "start_x":112,
+   "start_y":112,
+   "width":32,
+   "height":32
  },
 
  {
