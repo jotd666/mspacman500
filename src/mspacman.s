@@ -123,7 +123,7 @@ FOURTH_INTERMISSION_LEVEL = 13
 ;;INTERMISSION_TEST = THIRD_INTERMISSION_LEVEL
 
 ; if set skips intro and start music, game starts almost immediately
-;DIRECT_GAME_START
+DIRECT_GAME_START
 
 ; temp if nonzero, then records game input, intro music doesn't play
 ; and when one life is lost, blitzes and a0 points to move record table
@@ -134,7 +134,7 @@ FOURTH_INTERMISSION_LEVEL = 13
 
 EXTRA_LIFE_SCORE = 10000/10
 
-START_LEVEL = 1
+START_LEVEL = 11
 
 ; --------------- end debug/adjustable variables
 
@@ -743,8 +743,9 @@ init_level:
     clr.b   ghost_release_dot_counter
     
     ; speed table
-    add.w   d2,d2
     lea speed_table(pc),a1
+    add.w   d2,d2
+    add.w   d2,d2
     move.l  (a1,d2.w),a1    ; global speed table
     move.l  a1,global_speed_table
 
@@ -1761,7 +1762,8 @@ PLAYER_ONE_Y = 102-14
     move.b  d0,(NB_BYTES_PER_LINE+1,a1)    
 
     bsr draw_mspacman
-	
+    ; always draw lives because pacman can clear them with tunnels
+	bsr draw_lives_no_clear
 	; now draw bonus with full cookie cut
 	; to avoid to overwrite mspacman blit
     cmp.w   #1,bonus_active
@@ -2414,8 +2416,8 @@ draw_last_life:
     rts
     
 draw_lives:
-    moveq.w #3,d7
-    lea	screen_data,a1
+    moveq.w #1,d7
+    lea	screen_data+SCREEN_PLANE_SIZE*2,a1
 .cloop
     move.l #NB_BYTES_PER_MAZE_LINE*8,d0
     moveq.l #0,d1
@@ -2424,19 +2426,38 @@ draw_lives:
     add.w   #SCREEN_PLANE_SIZE,a1
     dbf d7,.cloop
     
-    lea pac_lives,a0
+draw_lives_no_clear:
     move.b  nb_lives(pc),d7
     ext     d7
     subq.w  #2,d7
     bmi.b   .out
     move.w #NB_BYTES_PER_MAZE_LINE*8,d3
     moveq.l #-1,d2  ; mask
+    lea	screen_data+SCREEN_PLANE_SIZE*2,a1
+    lea pac_lives+BOB_16X16_PLANE_SIZE*2,a0
+    move.w  d7,d6
+    
 .lloop
     move.w  d3,d0
     moveq.l #0,d1
-    bsr blit_4_planes
+    move.l  a1,a2
+    bsr blit_plane
+    move.l  a2,a1
     add.w   #16,d3
     dbf d7,.lloop
+
+    lea	screen_data+SCREEN_PLANE_SIZE*3,a1
+    lea pac_lives+BOB_16X16_PLANE_SIZE*3,a0
+    move.w  d6,d7
+    move.w #NB_BYTES_PER_MAZE_LINE*8,d3
+.lloop2
+    move.w  d3,d0
+    moveq.l #0,d1
+    move.l  a1,a2
+    bsr blit_plane
+    move.l  a2,a1
+    add.w   #16,d3
+    dbf d7,.lloop2
 .out
     rts
     
@@ -2590,8 +2611,12 @@ draw_maze:
     lea _custom+color,a0
     move.l  maze_misc(pc),a1
     move.w  (a1)+,(2,a0)  ; dots, color 1
-	move.w  (a1)+,(4,a0)  ; outline
-	move.w  (a1)+,(6,a0) ; fill
+	move.w  (a1)+,d0
+    move.w  d0,(4,a0)  ; outline
+    move.w  d0,maze_outline_color
+	move.w  (a1)+,d0
+    move.w  d0,(6,a0) ; fill
+    move.w  d0,maze_fill_color
     move.b  (1,a1),total_number_of_dots
     
     lea screen_data,a1
@@ -3031,13 +3056,15 @@ activate_bonus
     and.w   #3,d1       ; entry 0-3
     move.w  d0,d3
     lsr.w   #2,d3
-    and.w   #3,d3       ; exit 0-3
+    ; I'll be using a 8-item table to hold 3 different exits
+    ; which allows to balance odds more between the 3 better
+    and.w   #4,d3       ; exit 0-7 
     
     move.w  level_number(pc),d2
-    cmp.w   #8,d2
+    cmp.w   #7,d2
     bcs.b   .normal
     move.w  d0,d2
-    lsr.w   #4,d2   ; more bits from random
+    lsr.w   #5,d2   ; more bits from random
     and.w   #7,d2
     cmp.w   #7,d2
     bne.b   .normal
@@ -3202,6 +3229,8 @@ update_all
 
 .level_completed
     bsr hide_sprites
+    bsr remove_bonus
+    bsr remove_bonus_score
     bsr.b   stop_background_loop
     bsr     stop_sounds
     subq.w  #1,maze_blink_timer
@@ -3209,17 +3238,17 @@ update_all
     move.w  #MAZE_BLINK_TIME,maze_blink_timer
     subq.b  #1,maze_blink_nb_times
     beq.b   .next_level
-    lea     screen_data,a2
-    lea     screen_data+3*SCREEN_PLANE_SIZE,a1
+
+    lea _custom+color,a0
+
     eor.b   #1,.color_blue
     beq.b   .chcol
-.orig
-    exg a1,a2
+
+    move.w  maze_outline_color,(4,a0)  ; outline
+    move.w  maze_fill_color,(6,a0) ; fill
+    bra.b   .no_change
 .chcol
-    ;move.w  d0,_custom+color+2     ; maybe will be the final solution...
-    ;bsr     clear_maze_plane
-    ;move.l  a2,a1
-    ;bsr     draw_maze_plane
+    move.l  #$FFF0000,(4,a0)  ; outline+fill
 .no_change
     rts
 .color_blue
@@ -5196,7 +5225,6 @@ update_pac
     cmp.l   #ghosts+4*Ghost_SIZEOF,a3
     bcc.b   .no_need_to_count_dots
     
-    LOGPC   100
     ; we need to check if current ghost is in the pen, else we can't consider it
     move.w  (xpos,a3),d0
     move.w  (ypos,a3),d1
@@ -6544,6 +6572,10 @@ bonus_previous_x
     dc.w    0
 bonus_previous_y
     dc.w    0
+maze_outline_color
+    dc.w    0
+maze_fill_color
+    dc.w    0
 total_number_of_dots:
     dc.b    0
 maze_blink_nb_times
@@ -7330,15 +7362,56 @@ maze_1_fruit_exit_table:
     dc.l     maze_1_fruit_exit_2
     dc.l     maze_1_fruit_exit_3
     dc.l     maze_1_fruit_exit_3    ; probably no exit by upper right
+    dc.l     maze_1_fruit_exit_1
+    dc.l     maze_1_fruit_exit_2
+    dc.l     maze_1_fruit_exit_2
+    dc.l     maze_1_fruit_exit_3    ; probably no exit by upper right
     
 maze_2_fruit_entry_table:
-maze_3_fruit_entry_table:
-maze_4_fruit_entry_table:
+    dc.l     maze_2_fruit_entry_1
+    dc.l     maze_2_fruit_entry_2
+    dc.l     maze_2_fruit_entry_3
+    dc.l     maze_2_fruit_entry_4
 maze_2_fruit_exit_table:
-maze_3_fruit_exit_table:
-maze_4_fruit_exit_table:
+    dc.l     maze_2_fruit_exit_1
+    dc.l     maze_2_fruit_exit_2
+    dc.l     maze_2_fruit_exit_1
+    dc.l     maze_2_fruit_exit_2
+    dc.l     maze_2_fruit_exit_2
+    dc.l     maze_2_fruit_exit_3
+    dc.l     maze_2_fruit_exit_3
+    dc.l     maze_2_fruit_exit_3
     
-    ;;dc.w    -9,0,0,-6,9,0,0,6
+maze_3_fruit_entry_table:
+    dc.l     maze_3_fruit_entry_1
+    dc.l     maze_3_fruit_entry_2
+    dc.l     maze_3_fruit_entry_3
+    dc.l     maze_3_fruit_entry_3
+
+maze_3_fruit_exit_table:
+    dc.l     maze_3_fruit_exit_1
+    dc.l     maze_3_fruit_exit_2
+    dc.l     maze_3_fruit_exit_1
+    dc.l     maze_3_fruit_exit_2
+    dc.l     maze_3_fruit_exit_1
+    dc.l     maze_3_fruit_exit_2
+    dc.l     maze_3_fruit_exit_1
+    dc.l     maze_3_fruit_exit_2
+maze_4_fruit_entry_table:
+    dc.l     maze_4_fruit_entry_1
+    dc.l     maze_4_fruit_entry_2
+    dc.l     maze_4_fruit_entry_3
+    dc.l     maze_4_fruit_entry_4
+
+maze_4_fruit_exit_table:
+    dc.l    maze_4_fruit_exit_1
+    dc.l    maze_4_fruit_exit_2
+    dc.l    maze_4_fruit_exit_3
+    dc.l    maze_4_fruit_exit_4
+    dc.l    maze_4_fruit_exit_1
+    dc.l    maze_4_fruit_exit_2
+    dc.l    maze_4_fruit_exit_3
+    dc.l    maze_4_fruit_exit_4
 
     ; tilex,tiley start
     ; then moves, zero terminated
@@ -7370,9 +7443,81 @@ maze_1_fruit_exit_3     ; bottom right
     dc.w    -3,0,0,3,9,0,0,-3,4,0
     dc.l    0
     
+maze_2_fruit_entry_1
+    dc.w    X_MAX/8,23+3
+    dc.w    -5,0,0,-3,-8,0,0,-3,-7,0,0,-6,9,0,0,6
+    dc.l    0
+maze_2_fruit_exit_1
+    dc.w    -2,0,0,3,5,0,0,-10,5,0,0,-6,-5,0,0,-3,7,0
+    dc.l    0
+maze_2_fruit_entry_2
+    dc.w    0,23+3
+    dc.w    5,0,0,-3,8,0,0,3,5,0,0,-6,-7,0,0,-6,9,0,0,6
+    dc.l    0
+maze_2_fruit_exit_2
+    dc.w    -2,0,0,6,-5,0,0,-3,-8,0,0,3,-5,0
+    dc.l    0
+maze_2_fruit_entry_3
+    dc.w    0,1+3
+    dc.w    8,0,0,3,3,0,0,7,9,0,0,6,-9,0,0,-6,9,0,0,6
+    dc.l    0
+maze_2_fruit_exit_3
+    dc.w    -2,0,0,3,8,0,0,3,4,0
+    dc.l    0
+maze_2_fruit_entry_4
+    dc.w    X_MAX/8,1+3
+    dc.w    -8,0,0,3,-3,0,0,13,-9,0,0,-6,9,0,0,6
+    dc.l    0
 
+maze_3_fruit_entry_1
+    dc.w    X_MAX/8,9+3
+    dc.w    -3,0,0,5,-3,0,0,3,-14,0,0,-6,9,0,0,6
+    dc.l    0
+maze_3_fruit_exit_1
+    dc.w    -3,0,0,3,3,0,0,3,3,0,0,-3,5,0,0,-11,2,0
+    dc.l    0
+maze_3_fruit_exit_2
+    dc.w    -6,0,0,3,-3,0,0,3,-3,0,0,-3,-5,0,0,-11,-2,0
+    dc.l    0
 
+maze_3_fruit_entry_2
+    dc.w    X_MAX/8,9+3
+    dc.w    -6,0,0,2,-5,0,0,6,-9,0,0,-6,9,0,0,6
+    dc.l    0
+maze_3_fruit_entry_3
+    dc.w    0,9+3
+    dc.w    6,0,0,2,14,0,0,6,-9,0,0,-6,9,0,0,6
+    dc.l    0
 
+maze_4_fruit_entry_1
+    dc.w    0,13+3
+    dc.w    5,0,0,-5,3,0,0,-3,3,0,0,3,3,0,0,3,6,0,0,6,-9,0,0,-6,9,0,0,6
+    dc.l    0
+maze_4_fruit_entry_2
+    dc.w    X_MAX/8,13+3
+    dc.w    -5,0,0,-2,-3,0,0,3,-3,0,0,3,-9,0,0,-6,9,0,0,6
+    dc.l    0
+maze_4_fruit_entry_3
+    dc.w    0,16+3
+    dc.w    5,0,0,2,3,0,0,2,6,0,0,3,3,0,0,-6,-6,0,0,-6,9,0,0,6
+    dc.l    0
+maze_4_fruit_entry_4
+    dc.w    X_MAX/8,16+3
+    dc.w    -5,0,0,2,-3,0,0,2,-6,0,0,-3,-6,0,0,-6,9,0,0,6
+    dc.l    0
+
+maze_4_fruit_exit_1
+    dc.w    -6,0,0,3,-6,0,0,-2,-3,0,0,-2,-5,0
+    dc.l    0
+maze_4_fruit_exit_2
+    dc.w    -3,0,0,3,6,0,0,-2,3,0,0,-2,5,0
+    dc.l    0
+maze_4_fruit_exit_3
+    dc.w    -3,0,0,3,6,0,0,-9,3,0,0,2,5,0
+    dc.l    0
+maze_4_fruit_exit_4
+    dc.w    -9,0,0,-3,-3,0,0,-3,-3,0,0,2,-5,0
+    dc.l    0
 
 ; add small safety in case some blit goes beyond screen
 screen_data:
@@ -7433,12 +7578,13 @@ bonus_pics:
     incbin  "banana.bin"      ; 6
 
 bonus_scores:
-    incbin  "bonus_scores_100.bin"    ; 100
-    incbin  "bonus_scores_200.bin"   ; 200
-    incbin  "bonus_scores_700.bin"    ; 300
-    incbin  "bonus_scores_1000.bin"    ; 500
-    incbin  "bonus_scores_2000.bin"    ; 700
-    incbin  "bonus_scores_5000.bin"    ; 700
+    incbin  "bonus_scores_100.bin" 
+    incbin  "bonus_scores_200.bin" 
+    incbin  "bonus_scores_500.bin" 
+    incbin  "bonus_scores_700.bin" 
+    incbin  "bonus_scores_1000.bin"
+    incbin  "bonus_scores_2000.bin"
+    incbin  "bonus_scores_5000.bin"
 
 
 

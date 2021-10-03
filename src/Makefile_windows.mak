@@ -12,5 +12,5 @@ $(WHDLOADER) : $(SOURCE)
 	wdate.py> datetime
 	vasmm68k_mot -DDATETIME -I$(HDBASE)/amiga39_JFF_OS/include -I$(WHDBASE)\Include -I$(WHDBASE) -devpac -nosym -Fhunkexe -o $(WHDLOADER) $(SOURCE)
 
-$(MAIN) : mspacman.s ptplayer.s 
+$(MAIN) : mspacman.s ptplayer.s maze_data.s
 	vasmm68k_mot -phxass -nosym -Fhunkexe -kick1hunks -maxerrors=0 -I$(HDBASE)/amiga39_JFF_OS/include -o $(MAIN) mspacman.s

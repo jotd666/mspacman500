@@ -3,7 +3,7 @@ from PIL import Image
 
 sprites_dir = "sprites"
 
-tunnels = [[(8,3),(17,3)],[(1,6),(23,3)],[(6,1)],[(10,4)]]
+tunnels = [[(8,3),(17,3)],[(1,6),(23,3)],[(9,1)],[(13,4),(16,4)]]
 
 def process_mazes():
     colors = []

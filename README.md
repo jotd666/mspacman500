@@ -9,16 +9,13 @@ REQUIRES:
 
 TODO: 
 
-- mazes: find all colors of each maze for all levels/find the pattern
-- intro
-- fruit appears: yellow dot on right bottom corner
-- 3 other mazes with fruit entry/exit paths
-- exit: clear fruit properly
-- maze flash when level ends
+- sounds: loops 2,3,4,5, eyes
+- fruit appears: yellow dot on right bottom corner/somewhere
+- maze flash when level ends wrong
 - fruit bounce
 - rip fruit noise (subtract sound loop)
-- rip lead instrument from 2nd tune (without bass)
 
+- redraw score all the time (maze 1 tunnel)
 
 FEATURES:
 
