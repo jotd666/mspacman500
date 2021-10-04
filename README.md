@@ -9,9 +9,10 @@ REQUIRES:
 
 TODO: 
 
-- sounds: loops 2,3,4,5, eyes
+- problems erasing mspacman on high levels
 - fruit appears: yellow dot on right bottom corner/somewhere
 - fruit bounce
+- reduce loop sound sizes
 - rip fruit noise (subtract sound loop)
 - intermission sequences
 - redraw score all the time (maze 1 tunnel)
