@@ -25,7 +25,7 @@ _expmem
     IFD CHIP_ONLY
     dc.l    0
     ELSE
-	dc.l	$80000					; ws_expmem
+	dc.l	$C0000					; ws_expmem
     ENDC
 	dc.w	_name-_base				; ws_name
 	dc.w	_copy-_base				; ws_copy
@@ -60,7 +60,7 @@ DECL_VERSION:MACRO
 	ENDC
 	ENDM
 _data   dc.b    0
-_name	dc.b	'Pacman',0
+_name	dc.b	'Ms Pacman',0
 _copy	dc.b	'2021 JOTD',0
 _info
 	dc.b	0
@@ -121,5 +121,5 @@ _resload:
 progstart
     dc.l    0
 exe
-	dc.b	"pacman",0
+	dc.b	"mspacman",0
 	

@@ -11,11 +11,11 @@ TODO:
 
 - problems erasing mspacman on high levels
 - fruit appears: yellow dot on right bottom corner/somewhere
-- fruit bounce
-- reduce loop sound sizes
-- rip fruit noise (subtract sound loop)
+- reduce loop sound sizes using play fx loop
 - intermission sequences
 - redraw score all the time (maze 1 tunnel)
+- intermission music crashes???
+- fruit sprites trashed/wrong color WTF
 
 FEATURES:
 
@@ -35,7 +35,17 @@ FEATURES:
 
 MINOR ISSUES:
 
-- sound loops not correct (bad loop timing => pops, tricky to make it right)
+- sound loops not correct (bad loop timing => pops, tricky to make it right): todo: use loopfx!!!
+
+CREDITS:
+
+- jotd: code and gfx/sfx conversion
+- no9: music conversion
+- phx: sfx/module player
+- meynaf: random routine
+- eab forum: useful advice & support
+- 125scratch: sprite rips https://www.spriters-resource.com/arcade/mspacman/
+- midway/gcc: original game :)
 
 BUILDING FROM SOURCES:
 

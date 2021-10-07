@@ -7,35 +7,31 @@
  "horizontal" : true,
  "objects":[{
    "name":"pac_right",
-   "generate_mask":false,
    "frames":3,
    "start_x":0,
    "start_y":0
  },
  {
    "name":"pac_left",
-   "generate_mask":false,
    "frames":3,
    "start_x":0,
    "start_y":16
  },
 {
    "name":"pac_lives",
-   "generate_mask":false,
+
    "frames":1,
    "start_x":0,
    "start_y":0
  },
  {
    "name":"pac_up",
-   "generate_mask":false,
-   "frames":3,
+    "frames":3,
    "start_x":0,
    "start_y":32
  },
 {
    "name":"pac_down",
-   "generate_mask":false,
    "frames":3,
    "start_x":0,
    "start_y":48
@@ -43,8 +39,7 @@
 
  {
    "name":"midway",
-   "generate_mask":false,
-   "frames":1,
+    "frames":1,
    "start_x":128,
    "start_y":96,
    "width":32,
@@ -52,14 +47,12 @@
   },
 {
    "name":"heart",
-   "generate_mask":false,
-   "frames":1,
+    "frames":1,
    "start_x":160,
    "start_y":96
   },
 {
    "name":"stork",
-   "generate_mask":false,
    "frames":2,
    "start_x":96,
    "start_y":0,
@@ -97,7 +90,6 @@
   },
 {
    "name":"baby_wrap",
-   "generate_mask":false,
    "frames":1,
    "start_x":96,
    "start_y":16
@@ -158,15 +150,23 @@
  },
  {
  "name":"clapper",
-   "generate_mask":false,
    "frames":3,
    "start_x":112,
-   "start_y":112,
+   "start_y":128,
    "width":32,
-   "height":32
+   "height":16
+ },
+ {
+ "name":"clapper_base",
+   "frames":1,
+   "start_x":112,
+   "start_y":144,
+   "width":32,
+   "height":16
  },
 
  {
+   "generate_mask":true,
    "name":"bonus",
    "frames":7,
    "start_x":48,

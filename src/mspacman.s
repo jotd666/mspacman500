@@ -123,7 +123,7 @@ FOURTH_INTERMISSION_LEVEL = 13
 ;;INTERMISSION_TEST = THIRD_INTERMISSION_LEVEL
 
 ; if set skips intro and start music, game starts almost immediately
-;DIRECT_GAME_START
+DIRECT_GAME_START
 
 ; temp if nonzero, then records game input, intro music doesn't play
 ; and when one life is lost, blitzes and a0 points to move record table
@@ -134,7 +134,7 @@ FOURTH_INTERMISSION_LEVEL = 13
 
 EXTRA_LIFE_SCORE = 10000/10
 
-START_LEVEL = 1
+START_LEVEL = 1+FIRST_INTERMISSION_LEVEL
 
 ; --------------- end debug/adjustable variables
 
@@ -445,10 +445,6 @@ intro:
     move.w  #$7FFF,(intena,a5)
     
     bsr init_new_play
-
-    IFD INTERMISSION_TEST
-    move.w  #INTERMISSION_TEST,level_number
-    ENDC
 
 .new_level  
     bsr clear_screen
@@ -1206,7 +1202,7 @@ init_player
     bne.b   .played
     st.b    music_played
     moveq.l #0,d0
-    move.w  music_1_sound+ss_tick_length,d1
+    move.w  #264,d1     ; seems okay, matches intro music length
     move.w  d1,d0
     move.w  d0,first_ready_timer
     lsr.w   #1,d1
@@ -1835,7 +1831,9 @@ PLAYER_ONE_Y = 102-14
     rts
 
 stop_sounds
-    move.w  #$F,_custom+dmacon
+    lea _custom,a6
+    bra _mt_end
+    ;move.w  #$F,dmacon(a6)
     rts
 
 handle_ready_text
@@ -2366,7 +2364,7 @@ draw_bonus_score:
     
     rts
     
-; what: clears a plane of any width (ATM not using blitter)
+; what: clears a plane of any width (ATM not using blitter), 16 height
 ; args:
 ; < A1: dest
 ; < D0: X (multiple of 8)
@@ -3285,8 +3283,9 @@ update_all
     cmp.w   ready_timer(pc),d0
     bne.b   .no_first_tick
     move.w  #MSG_SHOW,player_one_and_life_display_message
-    lea     music_1_sound(pc),a0
-    bsr play_fx
+
+    moveq.l #0,d0   ; start!!
+    bsr play_music
 .no_first_tick
 
 
@@ -3295,7 +3294,9 @@ update_all
     bne.b   .dec
     ; 0
     move.w  #MSG_HIDE,ready_display_message
-    ; start music
+    ; stop music
+    bsr stop_sounds
+    ; start loop
     bsr start_background_loop
 .dec
     move.w  half_first_ready_timer(pc),d0
@@ -3837,8 +3838,8 @@ update_intermission_screen_level_5
     bne.b   .no_pac_demo_anim_init
     
     
-    lea music_2_sound(pc),a0
-    bsr play_fx
+ ;   lea music_2_sound(pc),a0
+ ;   bsr play_fx
     
     clr.w   nail_timer
     clr.w   show_leg
@@ -3869,12 +3870,7 @@ update_intermission_screen_level_5
     
     
 .no_pac_demo_anim_init
-    lea music_2_sound(pc),a0
-    move.w  state_timer(pc),d0
-    sub.w   #10,d0      ; add time before replays
-    cmp.w   ss_tick_length(a0),d0
-    bne.b   .no_music_replay
-    bsr play_fx
+ 
     
 .no_music_replay
 
@@ -4003,9 +3999,7 @@ update_intermission_screen_level_9
     tst.w   state_timer
     bne.b   .no_pac_demo_anim_init
     
-    lea music_2_sound(pc),a0
-    bsr play_fx
-    
+  
     
     bsr init_player
     moveq.l #0,d0
@@ -4033,12 +4027,6 @@ update_intermission_screen_level_9
     
     
 .no_pac_demo_anim_init
-    lea music_2_sound(pc),a0
-    move.w  state_timer(pc),d0
-    sub.w   #10,d0      ; add time before replays
-    cmp.w   ss_tick_length(a0),d0
-    bne.b   .no_music_replay
-    bsr play_fx
     
 .no_music_replay
 
@@ -4098,7 +4086,13 @@ update_intermission_screen_level_9
     
 draw_intermission_screen_level_2:
     tst.w   state_timer
-    beq.b   .outd
+    beq.b   .outd       ; do nothing first time
+    
+    
+    bsr draw_clapper
+    
+
+    
     
     ; blit pacman
     bsr draw_ghosts
@@ -4112,12 +4106,86 @@ draw_intermission_screen_level_2:
 .outd    
     rts
     
+CLAPPER_X = 44
+CLAPPER_Y = 88-Y_START
+draw_clapper
+    move.w  clapper_drawn(pc),d5
+    bmi.b   .no_clapper
+    move.w  #$FFF,_custom+color+2
+    
+    cmp.w   #9*4,d5
+    beq.b   .clear_clapper
+    cmp.w   #4*4,d5
+    bcc.b   .no_clapper
+
+    lea clapper_base,a0
+    move.w  #CLAPPER_X,d0
+    move.w  #CLAPPER_Y+16,d1
+    lea     screen_data,a1
+    move.w  #6,d2
+    move.l  #-1,d3
+    move.w  #16,d4
+    bsr     blit_plane_any
+
+    lea clapper_table(pc),a0
+    move.l  (a0,d5.w),a0    ; clapper bob data
+
+    move.w  #CLAPPER_X,d0
+    move.w  #CLAPPER_Y,d1
+    lea     screen_data,a1
+    move.w  #6,d2
+    move.l  #-1,d3
+    move.w  #16,d4
+    bsr     blit_plane_any
+
+    ; write text
+    move.w  #CLAPPER_X+24,d0
+    move.w  #CLAPPER_Y+7+16,d1
+    lea     act_number(pc),a0
+    lea     screen_data,a1
+    bsr     write_string
+    move.w  #CLAPPER_X+42,d0
+    move.w  #102-Y_START,d1
+    lea     they_meet(pc),a0
+    lea     screen_data,a1
+    bsr     write_string
+.no_clapper    
+    rts
+
+.clear_clapper:
+    lea     screen_data,a1
+    move.w  #CLAPPER_X+42,d0
+    move.w  #102-Y_START,d1
+    lea     clapper_blank_text(pc),a0
+    lea     screen_data,a1
+    bsr     write_string
+
+    ; lazy cpu shit
+    lea     screen_data,a1
+    move.w  #CLAPPER_X,d0
+    move.w  #CLAPPER_Y,d1
+    move.w  #6,d2
+    bsr     clear_plane_any
+    lea     screen_data,a1
+    move.w  #CLAPPER_X,d0
+    move.w  #CLAPPER_Y+16,d1
+    move.w  #6,d2
+    bsr     clear_plane_any
+    rts
+    
+act_number
+    dc.b    "1",0
+they_meet
+    dc.b    "THEY MEET",0
+clapper_blank_text
+    dc.b    "         ",0
+    even
 update_intermission_screen_level_2
     tst.w   state_timer
     bne.b   .no_pac_demo_anim_init
     
-    lea music_2_sound(pc),a0
-    bsr play_fx
+    move.w  #1,d0
+    bsr play_music
     
     bsr init_player
     moveq.l #0,d0
@@ -4145,18 +4213,30 @@ update_intermission_screen_level_2
     
     move.w  #ORIGINAL_TICKS_PER_SEC+ORIGINAL_TICKS_PER_SEC/2,.pac_wait_timer
 
+    clr.w   clapper_drawn
+    
 .no_pac_demo_anim_init
-    lea music_2_sound(pc),a0
-    move.w  state_timer(pc),d0
-    sub.w   #10,d0      ; add time before replays
-    cmp.w   ss_tick_length(a0),d0
-    bne.b   .no_music_replay
-    bsr play_fx
+   
     
 .no_music_replay
 
     add.w   #1,state_timer
-      
+    move.w  state_timer(pc),d0
+    
+    cmp.w   #$204,d0         ; exact duration of the music
+    beq.b   .act_end
+    
+    sub.w   #ORIGINAL_TICKS_PER_SEC,d0
+    bcs.b   .no_clapper_anim_start
+    cmp.w   #4*10,d0
+    beq.b   .clapper_anim_stop    
+    and.w   #$FFFC,d0   ; align on 4
+    move.w  d0,clapper_drawn    ; 4,8,12,16
+    bra.b   .no_clapper_anim_start    
+.clapper_anim_stop
+    move.w  #-1,clapper_drawn
+.no_clapper_anim_start    
+    
     lea     player(pc),a4
     lea     ghosts(pc),a3
     move.w  h_speed(a4),d0      ; speed
@@ -4252,12 +4332,19 @@ update_intermission_screen_level_2
     cmp.w   #X_MAX+19,d2
     bcs.b   .storex2
     clr.w   state_timer
+.act_end
     move.w  #STATE_PLAYING,current_state
     rts
 .move_period
      dc.w    0
 .pac_wait_timer
      dc.w    0
+     
+clapper_drawn
+    dc.w    0
+clapper_table
+    dc.l    clapper_0,clapper_1,clapper_2,clapper_0
+
 update_ghosts:
     lea ghosts(pc),a4
     moveq.w #3,d7
@@ -7031,7 +7118,19 @@ is_elroy:
     
     LABEL   Sound_SIZEOF
     
-
+play_music
+    movem.l d0-a6,-(a7)
+    lea _custom,a6
+    lea music,a0
+    sub.l   a1,a1
+    bsr _mt_init
+    ; set master volume a little less loud
+    lea MasterVolTab30,a0
+    move.l  a0,mt_MasterVolTab(a4)
+    bsr _mt_start
+    movem.l (a7)+,d0-a6
+    rts
+    
 ; < A0: sound struct
 play_fx
     tst.b   demo_mode
@@ -7171,8 +7270,7 @@ SOUND_ENTRY:MACRO
     SOUND_ENTRY loop_4,-1,0
     SOUND_ENTRY loop_fright,-1,0
     SOUND_ENTRY loop_eyes,-1,0
-    SOUND_ENTRY music_1,0,0
-    SOUND_ENTRY music_2,0,0
+
 
     dc.l    0
     
@@ -7730,7 +7828,14 @@ DECL_GHOST:MACRO
 
 ; special sprites for intermissions
 
-    
+clapper_0:
+    incbin  "clapper_0.bin"     ; 96 bytes
+clapper_1:
+    incbin  "clapper_1.bin"
+clapper_2:    
+    incbin  "clapper_2.bin"
+clapper_base
+    incbin  "clapper_base.bin"
 score_200:
     dc.l    0
     incbin  "scores_0.bin"      ; 64 bytes each, palette from pink sprite
@@ -7761,14 +7866,7 @@ ghost_eaten_raw
     incbin  "ghost_eaten.raw"
     even
 ghost_eaten_raw_end
-music_1_raw
-    incbin  "music_1.raw"
-    even
-music_1_raw_end
-music_2_raw
 
-    even
-music_2_raw_end
 
 bonus_eaten_raw
     incbin  "bonus_eaten.raw"
@@ -7816,6 +7914,9 @@ loop_eyes_raw
     even
 loop_eyes_raw_end
 
+    ; remade by no9 from EAB
+music:
+    incbin  "mspacman_convert.mod"
     
 empty_sprite
     dc.l    0,0
