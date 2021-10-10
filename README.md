@@ -13,9 +13,7 @@ TODO:
 - fruit appears: yellow dot on right bottom corner/somewhere
 - reduce loop sound sizes using play fx loop
 - intermission sequences
-- redraw score all the time (maze 1 tunnel)
-- intermission music crashes???
-- fruit sprites trashed/wrong color WTF
+- redraw score all the time (maze 1 tunnel/intermission)
 
 FEATURES:
 

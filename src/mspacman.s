@@ -487,18 +487,19 @@ intro:
     bne.b   .out_intermission
     bra.b   .intermission_loop   
 .out_intermission    
-    clr.w   state_timer    
-    
     lea _custom,a5
     move.w  #$7FFF,(intena,a5)
     bsr stop_sounds
+    clr.w   state_timer    
+    
 .no_intermission
     bsr wait_bof
     
     ; do it first, as the last bonus overwrites bottom left of screen
     bsr draw_bonuses    
     bsr draw_maze
-
+    bsr draw_score
+    
     ; for debug
     ;;bsr draw_bounds
     
@@ -647,9 +648,10 @@ clear_screen
     dbf d0,.cp
     rts
 
-; < A1: plane start    
-clear_maze_plane
-    move.l #NB_LINES-1,d0
+; < A1: plane start
+clear_playfield_plane
+    movem.l d0-d1/a0-a1,-(a7)
+    move.w #NB_LINES-1,d0
 .cp
     move.w  #NB_BYTES_PER_MAZE_LINE/4-1,d1
     move.l  a1,a0
@@ -658,6 +660,7 @@ clear_maze_plane
     dbf d1,.cl
     add.l   #NB_BYTES_PER_LINE,a1
     dbf d0,.cp
+    movem.l (a7)+,d0-d1/a0-a1
     rts
     
 init_new_play:
@@ -756,9 +759,24 @@ init_level:
     
     rts
 
+; clear planes used for score (score hidden in acts)
+clear_scores
+    lea	screen_data+SCREEN_PLANE_SIZE*1,a1
+    move.w  #232,d0
+    move.w  #16,d1
+    move.w  #9,d2
+    move.w  #4,d3
+.loop
+    lea	screen_data+SCREEN_PLANE_SIZE*1,a1
+    bsr clear_plane_any
+    add.w	#SCREEN_PLANE_SIZE,a1
+    bsr clear_plane_any
+    add.w   #16,d1
+    dbf d3,.loop
+    rts
+    
 ; draw score with titles and extra 0
 draw_score:
-    lea	screen_data+SCREEN_PLANE_SIZE*3,a1  ; white
     lea p1_string(pc),a0
     move.w  #232,d0
     move.w  #16,d1
@@ -1186,17 +1204,9 @@ init_player
     bsr remove_bonus_score
     
     lea player(pc),a0
-    move.l  #'PACM',character_id(a0)
-    ; added +1 to be 100% exact vs original positionning
-	move.w  #RED_XSTART_POS+1,xpos(a0)
-	move.w	#188+Y_START,ypos(a0)
-	move.w 	#LEFT,direction(a0)
-    clr.w  speed_table_index(a0)
-    move.w  #-1,h_speed(a0)
-    clr.w   v_speed(a0)
-    clr.w   prepost_turn(a0)
-    clr.b   still_timer(a0)
-    move.w  #0,frame(a0)
+    move.l  #'MRSP',character_id(a0)
+    bsr     init_any_pac
+    
     move.w  #ORIGINAL_TICKS_PER_SEC,D0   
     tst.b   music_played
     bne.b   .played
@@ -1238,7 +1248,19 @@ init_player
     
     rts
     	    
-
+init_any_pac:
+    ; added +1 to be 100% exact vs original positionning
+	move.w  #RED_XSTART_POS+1,xpos(a0)
+	move.w	#188+Y_START,ypos(a0)
+	move.w 	#LEFT,direction(a0)
+    clr.w  speed_table_index(a0)
+    move.w  #-1,h_speed(a0)
+    clr.w   v_speed(a0)
+    clr.w   prepost_turn(a0)
+    clr.b   still_timer(a0)
+    move.w  #0,frame(a0)
+    rts
+    
 DEBUG_X = 8     ; 232+8
 DEBUG_Y = 8
 
@@ -2609,7 +2631,9 @@ draw_bonus:
     movem.l (a7)+,d0-d3/a0-a1
     rts
     
-draw_maze:    
+draw_maze:
+    bsr wait_blit
+    
     ; set colors
     lea _custom+color,a0
     move.l  maze_misc(pc),a1
@@ -2638,9 +2662,13 @@ draw_maze:
     move.l  (a0)+,(a1)+
     dbf d1,.copylong
     add.l  #12,a1
-    ; init planes in copperlist (after colors)
     dbf d0,.copyline
 
+    
+    lea screen_data+SCREEN_PLANE_SIZE*2,a1
+    bsr clear_playfield_plane
+    add.w   #SCREEN_PLANE_SIZE,a1
+    bsr clear_playfield_plane
     rts    
 
 
@@ -3321,6 +3349,10 @@ update_all
 .no_sound_loop_change    
     rts
 .update_pac_and_ghosts
+    tst.w   bonus_active
+    beq.b   .nobonus
+    bsr update_bonus
+.nobonus
     ; collisions are checked more often to avoid the infamous
     ; "pass through" bug. I would have loved to keep it, but it
     ; seems that it happens a lot more with my version for an unknown reason
@@ -3329,12 +3361,7 @@ update_all
     bsr update_pac
     bsr check_pac_ghosts_collisions
     bsr update_ghosts
-    bsr check_pac_ghosts_collisions
-    tst.w   bonus_active
-    beq.b   .nobonus
-    bra update_bonus
-.nobonus
-    rts
+    bra check_pac_ghosts_collisions
     
 update_bonus
     eor.b   #1,update_bonus_counter
@@ -3500,6 +3527,7 @@ check_pac_ghosts_collisions
     tst.b   invincible_cheat_flag
     bne.b   .nomatch    
     move.w  #PLAYER_KILL_TIMER,player_killed_timer
+    bsr     remove_bonus
     bra stop_background_loop
 
     
@@ -3552,6 +3580,8 @@ update_intro_screen
     move.w  #260,xpos(a0)
     move.w  #170,ypos(a0)
     move.w  #LEFT,direction(a0)
+    
+    clr.w   .anim_ms_pac
     
     moveq.l #0,d0
     bsr init_ghosts
@@ -3621,7 +3651,10 @@ update_intro_screen
     lea     player(pc),a4
     cmp.w   #132,xpos(a4)
     beq.b   .nomspac
-    bsr     animate_pacman
+    eor.w   #1,.anim_ms_pac
+    beq.b   .no_anim
+    bsr     animate_mspacman
+.no_anim
     subq.w  #1,xpos(a4)
 .nomspac
     move.w  state_timer(pc),d0
@@ -3642,7 +3675,8 @@ update_intro_screen
     dc.w    0
 .y_target
     dc.w    0
-    
+.anim_ms_pac
+    dc.w    0
 .remaining_ghosts
     cmp.w   #DEMO_PACMAN_TIMER,state_timer
     bne.b   .no_pac_demo_anim_init
@@ -3706,7 +3740,7 @@ update_intro_screen
 .no_move_reset
     tst.w   d0
     beq.b   .no_pac_anim
-    bsr animate_pacman
+    bsr animate_mspacman
     
 .no_pac_anim
     tst.w   d1
@@ -3879,7 +3913,7 @@ update_intermission_screen_level_5
     lea     player(pc),a4
     lea     ghosts(pc),a3
 
-    bsr animate_pacman
+    bsr animate_mspacman
 
     ; update ghost animations but don't move
     ; apply speed on ghosts
@@ -3976,25 +4010,6 @@ draw_intermission_screen_level_9:
 .outd
     rts
     
-.blit_naked_ghost
-    movem.l d2-d6/a0-a1/a5,-(a7)
-    lea $DFF000,A5
-	move.l #-1,bltafwm(a5)	;no masking of first/last word    
-    lea     screen_data,a1
-    moveq.l #3,d6
-.loop
-    movem.l d0-d1/a1,-(a7)
-    move.w  #6,d2       ; 32 pixels + 2 shift bytes
-    move.w  #16,d3      ; height
-    bsr blit_plane_any_internal
-    movem.l (a7)+,d0-d1/a1
-    add.l   #SCREEN_PLANE_SIZE,a1
-    add.l   #96,a0      ; 64 but shifting!
-    dbf d6,.loop
-.endblit
-    movem.l (a7)+,d2-d6/a0-a1/a5
-    rts
-    
 update_intermission_screen_level_9
     tst.w   state_timer
     bne.b   .no_pac_demo_anim_init
@@ -4034,7 +4049,7 @@ update_intermission_screen_level_9
       
     lea     player(pc),a4
 
-    bsr animate_pacman
+    bsr animate_mspacman
 
     lea     ghosts(pc),a3
     ; update ghost animations but don't move
@@ -4079,7 +4094,7 @@ update_intermission_screen_level_9
     bne.b   .no_end
     clr.w   state_timer
 
-    move.w  #STATE_PLAYING,current_state
+    move.w  #STATE_NEXT_LEVEL,current_state
 .no_end
     rts
 
@@ -4088,21 +4103,34 @@ draw_intermission_screen_level_2:
     tst.w   state_timer
     beq.b   .outd       ; do nothing first time
     
-    
+    bsr clear_scores
     bsr draw_clapper
     
+    tst.w  clapper_drawn
+    bpl.b   .outd
 
     
-    
-    ; blit pacman
     bsr draw_ghosts
-    lea player(pc),a2
-    cmp.w   #LEFT,direction(a2)
-    beq.b   .small
-    ;;bsr draw_big_pacman
-    bra.b   .outd
-.small
+
+    bsr erase_mspacman    
+
     bsr draw_mspacman
+    bsr draw_pacman
+    
+    cmp.w   #3,intermission_phase
+    bne.b   .outd
+    bsr     hide_sprites
+    lea     player(pc),a4
+    move.w  #X_MAX/2-8-X_START,d0
+    move.w  ypos(a4),d1
+    sub.w   #24+Y_START,d1
+    lea     screen_data,a1
+    lea     heart,a0
+    movem.w d0-d1,-(a7)
+    bsr     blit_plane
+    movem.w (a7)+,d0-d1
+    lea     screen_data+3*SCREEN_PLANE_SIZE,a1
+    bsr     blit_plane
 .outd    
     rts
     
@@ -4111,8 +4139,16 @@ CLAPPER_Y = 88-Y_START
 draw_clapper
     move.w  clapper_drawn(pc),d5
     bmi.b   .no_clapper
+    cmp.w   #3*4,d5
+    bne.b   .no_clear_text
+    lea     screen_data,a1
+    move.w  #CLAPPER_X+42,d0
+    move.w  #102-Y_START,d1
+    lea     clapper_blank_text(pc),a0
+    bsr     write_string
+.no_clear_text        
     move.w  #$FFF,_custom+color+2
-    
+    move.w  #$FF0,_custom+color+4   ; yellow for pacman, on another plane
     cmp.w   #9*4,d5
     beq.b   .clear_clapper
     cmp.w   #4*4,d5
@@ -4128,6 +4164,7 @@ draw_clapper
     bsr     blit_plane_any
 
     lea clapper_table(pc),a0
+    and.w   #$FFFC,d5
     move.l  (a0,d5.w),a0    ; clapper bob data
 
     move.w  #CLAPPER_X,d0
@@ -4138,28 +4175,24 @@ draw_clapper
     move.w  #16,d4
     bsr     blit_plane_any
 
-    ; write text
+    lea     screen_data,a1
     move.w  #CLAPPER_X+24,d0
     move.w  #CLAPPER_Y+7+16,d1
     lea     act_number(pc),a0
-    lea     screen_data,a1
     bsr     write_string
+    
+    tst.w   d5
+    bne.b   .no_clapper
+    ; write text
     move.w  #CLAPPER_X+42,d0
     move.w  #102-Y_START,d1
     lea     they_meet(pc),a0
-    lea     screen_data,a1
     bsr     write_string
 .no_clapper    
     rts
 
-.clear_clapper:
-    lea     screen_data,a1
-    move.w  #CLAPPER_X+42,d0
-    move.w  #102-Y_START,d1
-    lea     clapper_blank_text(pc),a0
-    lea     screen_data,a1
-    bsr     write_string
 
+.clear_clapper:
     ; lazy cpu shit
     lea     screen_data,a1
     move.w  #CLAPPER_X,d0
@@ -4184,8 +4217,15 @@ update_intermission_screen_level_2
     tst.w   state_timer
     bne.b   .no_pac_demo_anim_init
     
-    move.w  #1,d0
-    bsr play_music
+    lea robopac(pc),a0
+    bsr init_any_pac
+    lea robopac(pc),a2
+    move.w  #0,xpos(a2)
+    move.w  #RIGHT,direction(a2)
+    move.w  #Y_PAC_ANIM+28-80,ypos(a2)
+    move.w  #1,h_speed(a2)
+    clr.w  intermission_phase
+    clr.w   ghost_collided
     
     bsr init_player
     moveq.l #0,d0
@@ -4193,8 +4233,10 @@ update_intermission_screen_level_2
         
     lea player(pc),a2
     clr.w   .move_period
+    clr.w   animate_pacs
     move.w  #X_MAX,xpos(a2)
     move.w  #Y_PAC_ANIM+28,ypos(a2)
+    move.w  #-1,h_speed(a2)
     lea ghosts(pc),a3
     moveq   #3,d0
     moveq.w #0,d1
@@ -4206,15 +4248,22 @@ update_intermission_screen_level_2
     add.l   #Ghost_SIZEOF,a3
     dbf d0,.ginit
     
-    ; only red moves / is visible
-    lea     ghosts(pc),a3
+    ; pink
+    lea     pink_ghost(pc),a3
     move.w  #-1,h_speed(a3)    
-    move.w  #X_MAX+24,xpos(a3)
+    move.w  #X_MAX+96,xpos(a3)
+    lea     cyan_ghost(pc),a3   
+    move.w  #1,h_speed(a3)    
+    move.w  #-96,xpos(a3)
+    move.w  #RIGHT,direction(a3)
+    move.w  #Y_PAC_ANIM+28-80,ypos(a3)
     
-    move.w  #ORIGINAL_TICKS_PER_SEC+ORIGINAL_TICKS_PER_SEC/2,.pac_wait_timer
 
     clr.w   clapper_drawn
-    
+ 
+    move.w  #1,d0
+    bsr play_music
+ 
 .no_pac_demo_anim_init
    
     
@@ -4224,127 +4273,246 @@ update_intermission_screen_level_2
     move.w  state_timer(pc),d0
     
     cmp.w   #$204,d0         ; exact duration of the music
+    beq.b   .music_end
+    cmp.w   #$224,d0
     beq.b   .act_end
     
     sub.w   #ORIGINAL_TICKS_PER_SEC,d0
     bcs.b   .no_clapper_anim_start
     cmp.w   #4*10,d0
-    beq.b   .clapper_anim_stop    
-    and.w   #$FFFC,d0   ; align on 4
-    move.w  d0,clapper_drawn    ; 4,8,12,16
+    bcc.b   .clapper_anim_stop    
+    move.w  d0,clapper_drawn
     bra.b   .no_clapper_anim_start    
 .clapper_anim_stop
     move.w  #-1,clapper_drawn
 .no_clapper_anim_start    
     
+    tst.w  clapper_drawn
+    bpl.b   .outd
+   
+    cmp.w   #3,intermission_phase
+    bne.b   .no_phase_3
+    move.w  state_timer(pc),d0
+    
+    cmp.w   #$19C,d0         ; small pac anims, then still
+    bcc.b   .outd
+
+    bsr pacs_act_anim
+    bra.b   .outd
+.no_phase_3    
     lea     player(pc),a4
-    lea     ghosts(pc),a3
-    move.w  h_speed(a4),d0      ; speed
-    move.w  h_speed(a3),d1      ; speed
-    add.w   #1,.move_period
+    lea     pink_ghost(pc),a3
 
-    move.w  .move_period(pc),d5
-    cmp.w   #8,d5
-    beq.b   .no_pac_demo_anim       ; nothing moves
-    cmp.w   #-1,h_speed(a3)
-    beq.b   .ghost_attack
-    move.w  d5,d6
-    and.w   #3,d6
-    bne.b   .ghost_attack
-    clr.w   d1  ; slower ghosts
-.ghost_attack
-    
-    cmp.w   #16,d5
-    bne.b   .no_move_reset
-    clr.w   .move_period
-    cmp.w   #-1,h_speed(a3)
-    bne.b   .ghosts_slow
-    ; pacman doesn't move this time
-    clr.w   d0
-    bra.b   .no_move_reset
-.ghosts_slow
-    ; ghosts don't move
-    ; pacman moves 1 more
-    addq.w  #1,d0
-    clr.w   d1
-.no_move_reset
-    tst.w   d0
-    beq.b   .no_pac_anim
-    bsr animate_pacman
-    
-.no_pac_anim
-    tst.w   d1
-    beq.b   .no_ghost_anim
+    cmp.w   #2,intermission_phase
+    bne.b   .no_phase_2
 
-    ; update ghost animations but don't move
+    move.w  #-1,d0
+    move.w  d0,d1
+    bsr .speed_variation
+        
+    lea pink_ghost(pc),a3
+    move.w   (xpos,a3),d2
+
+    tst.w   ghost_collided
+    bne.b   .ongoing_collision
+    
+    cmp.w   #X_MAX/2-8,d2
+    bcs.b   .no_ghost_collision
+    move.w  #1,ghost_collided
+    ; init collision bounce x/y offset table pointer
+    clr.w   ghost_collision_index
+    bra.b   .ongoing_collision
+.no_ghost_collision
+    ; ghosts still nearing each other
+    sub.w   d1,d2
+    move.w  d2,(xpos,a3)
+    lea cyan_ghost(pc),a3
+    add.w   d1,(xpos,a3)
+    bra.b   .cont
+.ongoing_collision
+    cmp.w   #2,ghost_collided
+    beq.b   .cont       ; collision ended
+    ; ghosts are colliding/bouncing according to an offset table
+    move.w  ghost_collision_index(pc),d2
+    addq.w  #1,ghost_collision_index
+    btst    #0,d2
+    bne.b   .cont   ; one out of 2
+    add.w   d2,d2
+    lea pink_ghost_collision_table(pc),a0
+    move.l  (a0,d2.w),d1
+    beq.b   .collision_done
+    lea pink_ghost(pc),a0
+    add.w   d1,ypos(a0)
+    swap    d1
+    add.w   d1,xpos(a0)
+    lea cyan_ghost_collision_table(pc),a0
+    move.l  (a0,d2.w),d1
+    beq.b   .collision_done
+    lea cyan_ghost(pc),a0
+    add.w   d1,ypos(a0)
+    swap    d1
+    add.w   d1,xpos(a0)  
+    bra.b   .cont
+.collision_done
+    move.w  #2,ghost_collided
+.cont
+    move.w   (ypos,a4),d2
+    cmp.w   #56,d2
+    bcs.b   .last_phase
+    
+    add.w   d0,d2
+    move.w  d2,ypos(a4)
+    lea     robopac(pc),a4
+    move.w  d2,ypos(a4)
+    
+    bsr pacs_act_anim
+    bra.b   .outd
+.last_phase
+    lea     robopac(pc),a4
+    move.w  #LEFT,direction(a4)
+    lea     player(pc),a4
+    move.w  #RIGHT,direction(a4)
+    move.w  #3,intermission_phase
+    
+    bra.b   .outd
+.no_phase_2
+
+    move.w  h_speed(a4),d0      ; player speed
+    move.w  h_speed(a3),d1      ; ghost speed
+    bsr     .speed_variation
+    
+    tst.w   (xpos,a4)
+    bmi.b   .no_pacmove
+    
+    add.w   d0,xpos(a4)    
+    lea     robopac(pc),a4
+    sub.w   d0,xpos(a4)
+
+    bsr pacs_act_anim
+
+.no_pacmove
+    
     ; apply speed on ghosts
     add.w   d1,(xpos,a3)
     move.w  frame(a3),d2
     addq.w  #1,d2
     and.w   #$F,d2
     move.w  d2,frame(a3)
-
-.no_ghost_anim
-    move.w  (xpos,a4),d2
-    add.w   d0,d2 ; pac
-    cmp.w   #LEFT,direction(a4)
-    bne.b   .pacman_chasing
-
-    lea ghosts(pc),a3
-    cmp.w   #1,h_speed(a3)
-    beq.b   .storex ; turn taken already
-    cmp.w   #8,d2
-    bne.b   .storex
     
-    lea ghosts(pc),a3
-
-    move.l  color_register(a3),a1
-    lea     frightened_ghosts_blue_palette(pc),a2
-    ; directly change color registers for that sprite
-    move.l  (a2)+,(a1)+
-    move.l  (a2)+,(a1)+
-    move.w  #MODE_FRIGHT,mode(a3)
-    move.w  #1,h_speed(a3)
-  
-    lea ghosts(pc),a3
-    move.w  #RIGHT,d3
-    move.w  d3,(direction,a3)
-    bra.b   .storex2
-.storex
-    cmp.w   #4,d2
-    bcc.b  .storex2
-    tst.w   .pac_wait_timer
-    beq.b   .reverse
-    subq.w  #1,.pac_wait_timer
-    bra.b   .no_pac_demo_anim
-.reverse
-    sub.w   #16,ypos(a4)        ; upper
-    move.w  #1,h_speed(a4)
-    move.w  #RIGHT,direction(a4)
+    lea     cyan_ghost(pc),a3
+    move.w  d2,frame(a3)
+    sub.w   d1,(xpos,a3)
+    
+    ; see for phase change
+    move.w  intermission_phase(pc),d0
+    bne.b   .no_phase_0
+    lea     pink_ghost(pc),a4    
+    tst.w   (xpos,a4)
+    bpl.b   .no_phase_0
+    move.w  #1,intermission_phase
+    lea     player(pc),a4
+    ; reset ghosts&pac positions
     move.w  #0,xpos(a4)
-    rts
+    move.w  #Y_PAC_ANIM+28-40,d0
+    move.w  #1,h_speed(a4)    
+    move.w  #RIGHT,direction(a4)
+    move.w  d0,ypos(a4)
+    lea robopac(pc),a4
+    move.w  #X_MAX,xpos(a4)
+    move.w  #-1,h_speed(a4)    
+    move.w  d0,ypos(a4)
+    move.w  #LEFT,direction(a4)
     
-.storex2
-    move.w  d2,(xpos,a4)
-.no_pac_demo_anim
+    lea     pink_ghost(pc),a4
+    move.w  #1,h_speed(a4)    
+    move.w  #-40,xpos(a4)
+    move.w  #RIGHT,direction(a4) 
+    move.w  d0,ypos(a4)
+    
+    lea     cyan_ghost(pc),a4   
+    move.w  #X_MAX+40,xpos(a4)
+    move.w  #-1,h_speed(a4)    
+    move.w  #LEFT,direction(a4)
+    move.w  d0,ypos(a4)
+    bra.b   .outd
+.no_phase_0:
+    cmp.w   #1,d0
+    bne.b   .no_phase_1
+    ; check if mspacman reaches a given x
+    lea     player(pc),a4
+    cmp.w   #X_MAX/2-8,xpos(a4)
+    bcs.b   .outd
+    move.w  #2,intermission_phase       ; pac avoid ghosts
+    move.w  #UP,direction(a4)
+    lea     robopac(pc),a4
+    move.w  #UP,direction(a4)
+    bra.b   .outd
+
+.no_phase_1:
+.outd    
     rts
-.pacman_chasing
-    cmp.w   #X_MAX+19,d2
-    bcs.b   .storex2
-    clr.w   state_timer
+.speed_variation
+    move.w  .move_period(pc),d5
+    add.w   #1,d5
+    cmp.w   #2,d5
+    bne.b   .no_fast_chars
+    add.w   d0,d0
+    add.w   d1,d1
+    bra.b   .no_speedup
+.no_fast_chars
+    cmp.w   #4,d5
+    bne.b   .no_speedup
+    ; faster ghost
+    add.w   d1,d1
+    clr.w   d5
+.no_speedup
+    move.w  d5,.move_period
+    rts
 .act_end
     move.w  #STATE_PLAYING,current_state
     rts
+.music_end
+    bra stop_sounds
+    
 .move_period
      dc.w    0
-.pac_wait_timer
-     dc.w    0
-     
+animate_pacs
+    dc.w    0
+    
+intermission_phase
+    dc.w    0
 clapper_drawn
+    dc.w    0
+ghost_collided
     dc.w    0
 clapper_table
     dc.l    clapper_0,clapper_1,clapper_2,clapper_0
-
+ghost_collision_index
+    dc.w    0
+; bounce tables for ghosts in act 1
+pink_ghost_collision_table
+    REPT    2
+    dc.w    0,-1,-1,-1,-1,0,-1,1,-1,1
+    ENDR
+    dc.w    -1,-1,-1,0,-1,1 ; lower bounce in the end
+    dc.l    0
+cyan_ghost_collision_table
+    REPT    2
+    dc.w    1,-1,1,-1,1,0,1,1,0,1
+    ENDR
+    dc.w    1,0,1,-1,0,1,1
+    dc.l    0
+; pacman/ms pacman animation are slower during the intermission/intro
+pacs_act_anim:
+    eor.w   #1,animate_pacs
+    beq.b   .no_pac_anim
+    lea     robopac(pc),a4
+    bsr     animate_mspacman
+    lea     player(pc),a4
+    bsr     animate_mspacman
+.no_pac_anim
+    rts
+    
 update_ghosts:
     lea ghosts(pc),a4
     moveq.w #3,d7
@@ -5486,7 +5654,7 @@ update_pac
     move.w  d5,xpos(a4)
     move.w  d3,ypos(a4)
 
-    bsr animate_pacman
+    bsr animate_mspacman
     clr.w   h_speed(a4)
 .no_vmove
     rts
@@ -5555,7 +5723,7 @@ update_pac
 .setx
     move.w  d2,xpos(a4)
     move.w  d5,ypos(a4)
-    bsr animate_pacman
+    bsr animate_mspacman
     clr.w   v_speed(a4)
 
 .no_hmove
@@ -5637,13 +5805,14 @@ record_input:
     
 ; called when pacman moves
 ; < A4: pac player
-animate_pacman
+animate_mspacman
     addq.w  #1,frame(a4)
     cmp.w   #(pac_anim_left_end-pac_anim_left)/4,frame(a4)
     bne.b   .no_floop
     clr.w   frame(a4)
 .no_floop
     rts
+
 
 level_completed:
     move.w  #MAZE_BLINK_TIME,maze_blink_timer
@@ -5676,7 +5845,7 @@ erase_mspacman
     ; only inside mrs pacman bob, no need to clear it, the next blit does the job
     ; so now no need to be careful when deleting mrs pacman other planes or partially
     ; redraw the maze or whatever: just bruteforce clear the planes
-    move.l  previous_pacman_address(pc),a3
+    move.l  previous_mspacman_address(pc),a3
     cmp.l   #0,a3
     beq.b   .verased
     move.w  previous_pacman_vspeed(pc),d3
@@ -5715,6 +5884,62 @@ erase_mspacman
     clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+SCREEN_PLANE_SIZE+1,a3)
     ENDR  
 .verased
+    rts
+    
+draw_pacman:
+    lea     robopac(pc),a2
+    
+    move.w  direction(a2),d0
+    lea  mrpac_dir_table(pc),a0
+    move.l  (a0,d0.w),a0
+    move.w  frame(a2),d0
+    add.w   d0,d0
+    add.w   d0,d0
+    move.l  (a0,d0.w),a0
+.pacblit
+    lea	screen_data+SCREEN_PLANE_SIZE,a1
+    move.w  xpos(a2),d0
+    move.w  ypos(a2),d1
+    ; center => top left
+    moveq.l #-1,d2 ; mask
+    sub.w  #8+Y_START,d1
+    sub.w  #8+X_START,d0
+    bpl.b   .no_left
+    ; d0 is negative
+    neg.w   d0
+    lsr.l   d0,d2
+    neg.w   d0
+    add.w   #NB_BYTES_PER_LINE*8,d0
+    subq.w  #1,d1
+    bra.b   .pdraw
+.no_left
+    ; check mask to the right
+    move.w  d0,d4    
+    sub.w   #X_MAX-24-X_START,d4
+    bmi.b   .pdraw
+    lsl.l   d4,d2
+    swap    d2
+    clr.w   d2
+.pdraw
+    ; first roughly clear some pacman zones that can remain. We don't test the directions
+    ; just clear every possible pixel that could remain whatever the direction was/is
+    bsr wait_blit   ; (just in case the blitter didn't finish writing pacman)
+    move.l  previous_mrpacman_address(pc),a3
+    cmp.l   #0,a3
+    beq.b   .no_prev
+    REPT    18
+    clr.l   (NB_BYTES_PER_LINE*(REPTN-1),a3)
+    ENDR
+.no_prev
+    bsr blit_plane
+    ; A1 is start of dest, use it to clear upper part and lower part
+    ; and possibly shifted to the left/right
+;;    move.l  a1,d0
+;;    btst    #0,d0
+;;    beq.b   .ok
+;;    subq.l  #1,a1   ; even address, always!
+;;.ok
+    move.l  a1,previous_mrpacman_address
     rts
     
 draw_mspacman:
@@ -5776,7 +6001,7 @@ draw_mspacman:
     move.w d1,d4
 
     bsr blit_plane
-    move.l  a1,previous_pacman_address
+    move.l  a1,previous_mspacman_address
     
     move.w d3,d0
     move.w d4,d1
@@ -6621,7 +6846,9 @@ fruit_score_index:
     dc.w    0
 next_ghost_score
     dc.w    0
-previous_pacman_address
+previous_mspacman_address
+    dc.l    0
+previous_mrpacman_address
     dc.l    0
 previous_pacman_hspeed
     dc.w    0
@@ -6793,6 +7020,8 @@ demo_moves_end:
 
 pac_dir_table
     dc.l    pac_anim_right,pac_anim_left,pac_anim_up,pac_anim_down
+mrpac_dir_table
+    dc.l    mrpac_anim_right,mrpac_anim_left,mrpac_anim_up,mrpac_anim_down
     
 PAC_ANIM_TABLE:MACRO
 pac_anim_\1
@@ -6802,10 +7031,23 @@ pac_anim_\1
 pac_anim_\1_end
     ENDM
     
+MR_PAC_ANIM_TABLE:MACRO
+mrpac_anim_\1
+    ; original shows 1 frame each 1/30s. We can't do that here but we
+    ; can shorten some frames
+    dc.l    mrpac_full,mrpac_full,mrpac_\1_0,mrpac_\1_1,mrpac_\1_1,mrpac_\1_0
+mrpac_anim_\1_end
+    ENDM
+    
     PAC_ANIM_TABLE  right
     PAC_ANIM_TABLE  left
     PAC_ANIM_TABLE  up
     PAC_ANIM_TABLE  down
+    
+    MR_PAC_ANIM_TABLE  right
+    MR_PAC_ANIM_TABLE  left
+    MR_PAC_ANIM_TABLE  up
+    MR_PAC_ANIM_TABLE  down
 
 bonus_sprite
     dc.l    0
@@ -7126,6 +7368,7 @@ play_music
     bsr _mt_init
     ; set master volume a little less loud
     lea MasterVolTab30,a0
+    lea mt_data,a4
     move.l  a0,mt_MasterVolTab(a4)
     bsr _mt_start
     movem.l (a7)+,d0-a6
@@ -7370,11 +7613,15 @@ game_palette
 player:
     ds.b    Player_SIZEOF
     even
+robopac:
+    ds.b    Player_SIZEOF
+    even
 ghosts:
 red_ghost:      ; needed by cyan ghost
     ds.b    Ghost_SIZEOF
 pink_ghost:      ; needed by cyan ghost
     ds.b    Ghost_SIZEOF
+cyan_ghost:
     ds.b    Ghost_SIZEOF
 orange_ghost:        ; needed to unlock elroy mode
     ds.b    Ghost_SIZEOF
@@ -7656,6 +7903,28 @@ ghost_bob_table:
     incbin  "pink_ghost_bob.bin"
     incbin  "cyan_ghost_bob.bin"
     incbin  "orange_ghost_bob.bin"
+
+heart
+    incbin  "heart.bin"
+mrpac_left_0
+    incbin  "mrpac_left_0.bin"
+mrpac_left_1    
+    incbin  "mrpac_left_1.bin"
+mrpac_right_0
+    incbin  "mrpac_right_0.bin"
+mrpac_right_1    
+    incbin  "mrpac_right_1.bin"
+mrpac_up_0
+    incbin  "mrpac_up_0.bin"
+mrpac_up_1
+    incbin  "mrpac_up_1.bin"
+mrpac_down_0
+    incbin  "mrpac_down_0.bin"
+mrpac_down_1
+    incbin  "mrpac_down_1.bin"
+mrpac_full
+    incbin  "mrpac_full.bin"
+
 
 
 pac_left_0

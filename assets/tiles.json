@@ -74,7 +74,7 @@
    "name":"mrpac_full",
    "frames":1,
    "start_x":192,
-   "start_y":16
+   "start_y":0
   },
 {
    "name":"mrpac_up",
