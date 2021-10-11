@@ -134,7 +134,7 @@ DIRECT_GAME_START
 
 EXTRA_LIFE_SCORE = 10000/10
 
-START_LEVEL = 1+FIRST_INTERMISSION_LEVEL
+START_LEVEL = 1+THIRD_INTERMISSION_LEVEL
 
 ; --------------- end debug/adjustable variables
 
@@ -1731,7 +1731,7 @@ PLAYER_ONE_Y = 102-14
     bra.b   .draw_complete
 .playing
     ; update sound loops here, loop frequency is based on VBL
-    bsr update_sound_loops
+    bsr update_extra_life_sound_loop
 
     move.w  ready_timer(pc),d0
     bmi.b   .ready_end
@@ -1855,8 +1855,7 @@ PLAYER_ONE_Y = 102-14
 stop_sounds
     lea _custom,a6
     bra _mt_end
-    ;move.w  #$F,dmacon(a6)
-    rts
+
 
 handle_ready_text
     cmp.w   #MSG_HIDE,ready_display_message
@@ -1948,8 +1947,8 @@ add_to_score:
     move.w  #MSG_SHOW,extra_life_message
     addq.b   #1,nb_lives
     move.l A0,-(a7)
-    lea extra_life_sound(pc),a0
-    bsr play_loop_fx
+    move.w  #10,extra_life_sound_counter
+    clr.w   extra_life_sound_timer
     move.l  (a7)+,a0
 .no_play
     rts
@@ -3682,7 +3681,7 @@ update_intro_screen
     bne.b   .no_pac_demo_anim_init
     clr.w   .skip_3_frames
     lea player(pc),a2
-    clr.w   .move_period
+    clr.w   move_period
     move.w  #X_MAX,xpos(a2)
     move.w  #Y_PAC_ANIM+28,ypos(a2)
     lea ghosts(pc),a3
@@ -3713,9 +3712,9 @@ update_intro_screen
     lea     ghosts(pc),a3
     move.w  h_speed(a4),d0      ; speed
     move.w  h_speed(a3),d1      ; speed
-    add.w   #1,.move_period
+    add.w   #1,move_period
 
-    move.w  .move_period(pc),d5
+    move.w  move_period(pc),d5
     cmp.w   #-1,h_speed(a3)
     beq.b   .ghost_attack
     move.w  d5,d6
@@ -3726,7 +3725,7 @@ update_intro_screen
     
     cmp.w   #16,d5
     bne.b   .no_move_reset
-    clr.w   .move_period
+    clr.w   move_period
     cmp.w   #-1,h_speed(a3)
     bne.b   .ghosts_slow
     ; pacman doesn't move this time
@@ -3840,8 +3839,7 @@ update_intro_screen
     rts
 .skip_3_frames
     dc.w    0
-.move_period
-    dc.w    0
+
 
 ; - intermission sequences (timing from YT longplay):
 ;  * 3"20 (after level 2): ghost chases pacman, big pacman chases back => DONE
@@ -3861,7 +3859,41 @@ draw_intermission_screen_level_5:
     tst.w   state_timer
     beq.b   .outd
     
+    bsr clear_scores
+    lea the_chase(pc),a0
+    moveq   #2,d0
+    bsr draw_clapper
+    
+    tst.w  clapper_drawn
+    bpl.b   .outd
 
+
+    bsr erase_mspacman    
+
+    bsr draw_mspacman
+    bsr draw_pacman
+    
+.outd    
+    rts
+
+draw_intermission_screen_level_9:
+    tst.w   state_timer
+    beq.b   .outd
+    
+    bsr clear_scores
+    lea junior_text(pc),a0
+    moveq   #3,d0
+    bsr draw_clapper
+    
+    tst.w  clapper_drawn
+    bpl.b   .outd
+
+
+    bsr erase_mspacman    
+
+    bsr draw_mspacman
+    bsr draw_pacman
+    
 .outd    
     rts
 
@@ -3870,233 +3902,143 @@ draw_intermission_screen_level_5:
 update_intermission_screen_level_5
     tst.w   state_timer
     bne.b   .no_pac_demo_anim_init
-    
-    
- ;   lea music_2_sound(pc),a0
- ;   bsr play_fx
-    
-    clr.w   nail_timer
-    clr.w   show_leg
+    lea robopac(pc),a0
+    bsr init_any_pac
+    lea robopac(pc),a2
+    move.w  #0,xpos(a2)
+    move.w  #RIGHT,direction(a2)
+    move.w  #Y_PAC_ANIM+28-80,ypos(a2)
+    move.w  #1,h_speed(a2)
+    clr.w  intermission_phase
     
     bsr init_player
-    moveq.l #0,d0
-    bsr init_ghosts
+
         
     lea player(pc),a2
-
+    clr.w   move_period
+    clr.w   animate_pacs
     move.w  #X_MAX,xpos(a2)
     move.w  #Y_PAC_ANIM+28,ypos(a2)
-    lea ghosts(pc),a3
-    moveq   #3,d0
-    moveq.w #0,d1
-.ginit
-    move.w   #400,xpos(a3)
-    move.w  ypos(a2),ypos(a3)
-    move.w  #LEFT,direction(a3)
-    move.w  #0,h_speed(a3)
-    add.l   #Ghost_SIZEOF,a3
-    dbf d0,.ginit
+    move.w  #-1,h_speed(a2)
+
     
-    ; only red moves / is visible but is far away
-    lea     ghosts(pc),a3
-    move.w  #-1,h_speed(a3)    
-    move.w  #X_MAX+128,xpos(a3)
-    
-    
-.no_pac_demo_anim_init
+
+    clr.w   clapper_drawn
  
-    
-.no_music_replay
+    move.w  #3,d0
+    bsr play_music
+ 
+.no_pac_demo_anim_init
+  
 
     add.w   #1,state_timer
-      
-    lea     player(pc),a4
-    lea     ghosts(pc),a3
-
-    bsr animate_mspacman
-
-    ; update ghost animations but don't move
-    ; apply speed on ghosts
-    move.w  frame(a3),d2
-    addq.w  #1,d2
-    and.w   #$F,d2
-    move.w  d2,frame(a3)
-
-
-    move.w  (xpos,a4),d2
-    sub.w   #1,d2 ; pac
-    bmi.b   .nopm
-    move.w  d2,(xpos,a4)
-.nopm
-    lea ghosts(pc),a3
-    move.w  (xpos,a3),d2
-    cmp.w   #X_NAIL_HOOKED,d2
-    bcc.b   .full_speed
-
-    move.w  nail_timer(pc),d0
-    addq.w  #1,d0
-    move.w  d0,nail_timer
+    move.w  state_timer(pc),d0
     
-    cmp.w   #X_NAIL_HOOKED-10,d2
-    bcs.b   .nogm
-
-    and.w   #7,d0       ; reduces speed
-    bne.b   .nogm
-.full_speed
-    sub.w   #1,d2
-.storex
-    move.w  d2,(xpos,a3)
-.nogm
-    move.w  nail_timer(pc),d0
-    cmp.w   #ORIGINAL_TICKS_PER_SEC*2,d0
-    bne.b   .no_tearing
-    move.w  #1,show_leg
-.no_tearing    
-    cmp.w   #ORIGINAL_TICKS_PER_SEC*3,d0
-    bne.b   .no_tearing2
-    move.w  #2,show_leg
-.no_tearing2
-    cmp.w   #$1B8,d0        ; end of second repeat of music
-    bne.b   .no_end
-    clr.w   state_timer
-    move.w  #STATE_PLAYING,current_state
-.no_end
+    cmp.w   #$510,d0         ; exact duration of the music
+    beq.b   .music_end
+    cmp.w   #$520,d0
+    beq.b   .act_end
+    
+    sub.w   #ORIGINAL_TICKS_PER_SEC,d0
+    bcs.b   .no_clapper_anim_start
+    cmp.w   #4*10,d0
+    bcc.b   .clapper_anim_stop    
+    move.w  d0,clapper_drawn
+    bra.b   .no_clapper_anim_start    
+.clapper_anim_stop
+    move.w  #-1,clapper_drawn
+.no_clapper_anim_start    
+    
+    tst.w  clapper_drawn
+    bpl.b   .outd
+   
+    nop
+.outd    
     rts
-
-show_leg:
-    dc.w    0
-nail_timer:
-    dc.w    0
-    
-
-draw_intermission_screen_level_9:
-    tst.w   state_timer
-    beq.b   .outd
-    
-    lea ghosts(pc),a2
-    
-.cont
-    cmp.w   #LEFT,direction(a2)
-    bne.b   .right
-    bsr draw_ghosts
-    bsr draw_mspacman
-    bra.b   .outd
-.right
-    bsr hide_ghost_sprites
-    move.w  xpos(a2),d0
-    move.w  ypos(a2),d1
-    ; center => top left
-    sub.w  #8+Y_START,d1
-    ; blit
-
-    bsr wait_blit
-    ; clip start/end (too lazy to use masks here...)
-    lea     screen_data+X_MAX/8-2+Y_PAC_ANIM*NB_BYTES_PER_LINE,a1
-    lea     screen_data+Y_PAC_ANIM*NB_BYTES_PER_LINE-4,a3
-    moveq   #3,d0
-.cy    
-    moveq   #13,d1
-    move.l  a1,a2
-    move.l  a3,a4
-.cx
-    clr.l   (a2)
-    clr.l   (a4)
-    add.w   #NB_BYTES_PER_LINE,a2
-    add.w   #NB_BYTES_PER_LINE,a4
-    dbf d1,.cx
-    add.l   #SCREEN_PLANE_SIZE,a1
-    add.l   #SCREEN_PLANE_SIZE,a3
-    dbf d0,.cy
-.outd
+.speed_variation
+    move.w  move_period(pc),d5
+    add.w   #1,d5
+    cmp.w   #2,d5
+    bne.b   .no_fast_chars
+    add.w   d0,d0
+    add.w   d1,d1
+    bra.b   .no_speedup
+.no_fast_chars
+    cmp.w   #4,d5
+    bne.b   .no_speedup
+    ; faster ghost
+    add.w   d1,d1
+    clr.w   d5
+.no_speedup
+    move.w  d5,move_period
     rts
+.act_end
+    move.w  #STATE_NEXT_LEVEL,current_state
+    rts
+.music_end
+    bra stop_sounds    
+
     
-update_intermission_screen_level_9
+update_intermission_screen_level_9:
     tst.w   state_timer
     bne.b   .no_pac_demo_anim_init
-    
-  
+    lea robopac(pc),a0
+    bsr init_any_pac
+    lea robopac(pc),a2
+    move.w  #0,xpos(a2)
+    move.w  #RIGHT,direction(a2)
+    move.w  #Y_PAC_ANIM+28-80,ypos(a2)
+    move.w  #1,h_speed(a2)
+    clr.w  intermission_phase
     
     bsr init_player
-    moveq.l #0,d0
-    bsr init_ghosts
+
         
     lea player(pc),a2
-
+    clr.w   move_period
+    clr.w   animate_pacs
     move.w  #X_MAX,xpos(a2)
     move.w  #Y_PAC_ANIM+28,ypos(a2)
-    lea ghosts(pc),a3
-    moveq   #3,d0
-    moveq.w #0,d1
-.ginit
-    move.w   #400,xpos(a3)
-    move.w  ypos(a2),ypos(a3)
-    move.w  #LEFT,direction(a3)
-    move.w  #0,h_speed(a3)
-    add.l   #Ghost_SIZEOF,a3
-    dbf d0,.ginit
+    move.w  #-1,h_speed(a2)
+
     
-    ; only red moves / is visible but is far away
-    lea     ghosts(pc),a3
-    move.w  #-1,h_speed(a3)    
-    move.w  #X_MAX+96,xpos(a3)
-    
-    
+
+    clr.w   clapper_drawn
+ 
+    move.w  #8,d0
+    bsr play_music
+ 
 .no_pac_demo_anim_init
-    
-.no_music_replay
+  
 
     add.w   #1,state_timer
-      
-    lea     player(pc),a4
-
-    bsr animate_mspacman
-
-    lea     ghosts(pc),a3
-    ; update ghost animations but don't move
-
-    move.w  frame(a3),d2
-    addq.w  #1,d2
-    and.w   #$F,d2
-    move.w  d2,frame(a3)
-
-    move.w  (xpos,a4),d2
-    sub.w   #1,d2 ; pac
-    bmi.b   .nopm
-    move.w  d2,(xpos,a4)
-.nopm
-
-    tst.w   (h_speed,a3)
-    beq.b   .going_left
+    move.w  state_timer(pc),d0
+    cmp.w   #$13C,d0         ; exact duration of the music
+    beq.b   .music_end
+    cmp.w   #$140,d0
+    beq.b   .act_end
     
-.going_left
-    move.w  (xpos,a3),d2
-    tst.w   d2
-    bpl.b   .storex
-    ; reverse
-    cmp.w   #RIGHT,(direction,a3)
-    beq.b   .storex
-    move.w  #1,(h_speed,a3)
-    move.w  #RIGHT,(direction,a3)
-    move.w #-32,d2
-.storex
-    add.w   (h_speed,a3),d2
-    cmp.w   #RIGHT,(direction,a3)
-    bne.b   .dostore
-    tst.w   d2
-    bmi.b   .dostore
-    cmp.w   #X_MAX-20,d2
-    bcc.b   .nogm
-.dostore
-    move.w  d2,(xpos,a3)
-.nogm
-
-    cmp.w   #$2B0,state_timer        ; end of second repeat of music
-    bne.b   .no_end
-    clr.w   state_timer
-
-    move.w  #STATE_NEXT_LEVEL,current_state
-.no_end
+    sub.w   #ORIGINAL_TICKS_PER_SEC,d0
+    bcs.b   .no_clapper_anim_start
+    cmp.w   #4*10,d0
+    bcc.b   .clapper_anim_stop    
+    move.w  d0,clapper_drawn
+    bra.b   .no_clapper_anim_start    
+.clapper_anim_stop
+    move.w  #-1,clapper_drawn
+.no_clapper_anim_start    
+    
+    tst.w  clapper_drawn
+    bpl.b   .outd
+   
+    nop
+.outd    
     rts
+.act_end
+    move.w  #STATE_NEXT_LEVEL,current_state
+    rts
+.music_end
+    bra stop_sounds     
 
     
 draw_intermission_screen_level_2:
@@ -4104,6 +4046,9 @@ draw_intermission_screen_level_2:
     beq.b   .outd       ; do nothing first time
     
     bsr clear_scores
+    lea they_meet(pc),a0
+    moveq   #1,d0
+    
     bsr draw_clapper
     
     tst.w  clapper_drawn
@@ -4136,9 +4081,17 @@ draw_intermission_screen_level_2:
     
 CLAPPER_X = 44
 CLAPPER_Y = 88-Y_START
+
+; < a0: text
+; < d0: act number
 draw_clapper
     move.w  clapper_drawn(pc),d5
     bmi.b   .no_clapper
+    move.l  a0,a2
+    lea     .act_number(pc),a0
+    add.b   #'0',d0
+    move.b  d0,(a0)
+    
     cmp.w   #3*4,d5
     bne.b   .no_clear_text
     lea     screen_data,a1
@@ -4178,7 +4131,7 @@ draw_clapper
     lea     screen_data,a1
     move.w  #CLAPPER_X+24,d0
     move.w  #CLAPPER_Y+7+16,d1
-    lea     act_number(pc),a0
+    lea     .act_number(pc),a0
     bsr     write_string
     
     tst.w   d5
@@ -4186,7 +4139,7 @@ draw_clapper
     ; write text
     move.w  #CLAPPER_X+42,d0
     move.w  #102-Y_START,d1
-    lea     they_meet(pc),a0
+    move.l  a2,a0
     bsr     write_string
 .no_clapper    
     rts
@@ -4206,10 +4159,14 @@ draw_clapper
     bsr     clear_plane_any
     rts
     
-act_number
-    dc.b    "1",0
+.act_number
+    dc.b    "x",0
 they_meet
     dc.b    "THEY MEET",0
+the_chase
+    dc.b    "THE CHASE",0
+junior_text:
+    dc.b    "JUNIOR",0
 clapper_blank_text
     dc.b    "         ",0
     even
@@ -4232,7 +4189,7 @@ update_intermission_screen_level_2
     bsr init_ghosts
         
     lea player(pc),a2
-    clr.w   .move_period
+    clr.w   move_period
     clr.w   animate_pacs
     move.w  #X_MAX,xpos(a2)
     move.w  #Y_PAC_ANIM+28,ypos(a2)
@@ -4452,7 +4409,7 @@ update_intermission_screen_level_2
 .outd    
     rts
 .speed_variation
-    move.w  .move_period(pc),d5
+    move.w  move_period(pc),d5
     add.w   #1,d5
     cmp.w   #2,d5
     bne.b   .no_fast_chars
@@ -4466,7 +4423,7 @@ update_intermission_screen_level_2
     add.w   d1,d1
     clr.w   d5
 .no_speedup
-    move.w  d5,.move_period
+    move.w  d5,move_period
     rts
 .act_end
     move.w  #STATE_PLAYING,current_state
@@ -4474,7 +4431,7 @@ update_intermission_screen_level_2
 .music_end
     bra stop_sounds
     
-.move_period
+move_period
      dc.w    0
 animate_pacs
     dc.w    0
@@ -5236,6 +5193,9 @@ resume_sound_loop:
 .normal
     bra start_background_loop
     
+play_loop_fx
+    lea _custom,a6
+    bra _mt_loopfx
     
 ; what: sets game state when a power pill has been taken
 ; trashes: A0,A1,D0,D1
@@ -6874,6 +6834,10 @@ maze_fruit_entry_table
     dc.l    0
 maze_fruit_exit_table
     dc.l    0
+extra_life_sound_counter
+    dc.w    0
+extra_life_sound_timer
+    dc.w    0
 ; 0: level 1
 level_number:
     dc.w    0
@@ -7351,15 +7315,9 @@ is_elroy:
     UWORD   ss_vol
     UBYTE   ss_channel
     UBYTE   ss_pri
-    ; custom shit
-    UWORD   ss_nb_repeats
-    UWORD   ss_current_repeat
-    UWORD   ss_vbl_length       ; auto compute
-    UWORD   ss_tick_length       ; auto compute
-    UWORD   ss_current_vbl
-    
     LABEL   Sound_SIZEOF
     
+; < D0: track start number
 play_music
     movem.l d0-a6,-(a7)
     lea _custom,a6
@@ -7383,99 +7341,41 @@ play_fx
 .no_sound
     rts
     
-; < A0: sound struct
-play_loop_fx
-    tst.b   demo_mode
-    bne.b   .no_sound
-    movem.l  d0-d1/a1,-(a7)
-    moveq   #0,d0
-    move.b  ss_channel(a0),d0
-    bmi.b   .out            ; no channel set: out
-    add.w   d0,d0
-    add.w   d0,d0
-    lea loop_array(pc),a1
-    move.l  (a1,d0.w),d1
-    beq.b   .was_free
-    ; not free: stop previous fx from repeating
-    exg.l  d1,a0
-    clr.w  ss_current_repeat(a0)
-    exg.l  a0,d1
-.was_free
-    move.l  a0,(a1,d0.w)
-    move.w  #0,ss_current_vbl(a0)  ; reset loop VBL timer TEMP 10/50s...
-    move.w  ss_nb_repeats(a0),ss_current_repeat(a0)   ; set number of repeats
-.out
-    movem.l  (a7)+,d0-d1/a1
-.no_sound
-    rts
 
-stop_loop_fx
-    move.w  d0,-(a7)
-    clr.w   ss_current_repeat(a0)  ; stop loop counter
-    moveq.l #0,d0
-    move.b  ss_channel(a0),d0
-    bmi.b   .nope
-    move.w  d1,-(a7)
-    moveq   #0,d1
-    bset    d0,d1
-    lea _custom,a0
-    move.w  d1,dmacon(a0)
-    move.w  (a7)+,d1
-.nope
     
-    move.w  (a7)+,d0
-    rts
     
-; custom addition to ptplayer: ability to loop sound several times or infinite
-update_sound_loops:
-    lea loop_array(pc),a1
-    ; check timers
-    moveq.w #3,d2
-    
-.ulloop
-    move.l  (a1)+,d0
-    beq.b   .next
-    move.l  d0,a0
-    ; check timer: do we need to play again?
-    move.w  ss_current_vbl(a0),d0
-    beq.b   .played
-    subq.w  #1,d0       ; decrease
-    move.w  d0,ss_current_vbl(a0)
-    bra.b   .next
-.played:
-    ; ended playing, do we need to play again?
-    tst.w   ss_current_repeat(a0)
-    bmi.b   .play
-    beq.b   .next ; no more repeats
-    subq.w  #1,ss_current_repeat(a0)
-.play
+; custom addition to ptplayer: ability to loop sound several times but not infinitely
+update_extra_life_sound_loop:
+    tst.w   extra_life_sound_counter
+    beq.b   .out    
+    tst.w   extra_life_sound_timer
+    bne.b   .increase
+    ; timer = 0: play
+    lea extra_life_sound(pc),a0
     bsr play_fx
-    move.w  ss_vbl_length(a0),ss_current_vbl(a0)  ; reset loop VBL timer
-.next
-    dbf d2,.ulloop
+    sub.w   #1,extra_life_sound_counter
+.increase
+    add.w   #1,extra_life_sound_timer
+    cmp.w   #9,extra_life_sound_timer
+    bne.b   .out
+    clr.w   extra_life_sound_timer
+.out
     rts
 
 start_background_loop
+    lea _custom,a6
     move.w  loop_index(pc),d0
     add.w   d0,d0
     add.w   d0,d0
     lea     loop_table(pc),a0
     move.l  (a0,d0.w),a0    ; current loop sound
-    bra play_loop_fx
+    bra _mt_loopfx
 
 
 stop_background_loop:
-    move.w  loop_index(pc),d0
-    add.w   d0,d0
-    add.w   d0,d0
-    lea     loop_table(pc),a0
-    move.l  (a0,d0.w),a0    ; current loop sound
-    bsr stop_loop_fx
-    ; also stop fright / eyes
-    lea loop_eyes_sound(pc),a0
-    bsr stop_loop_fx
-    lea loop_fright_sound(pc),a0
-    bra stop_loop_fx
+    lea _custom,a6
+    clr.w   d0
+    bra _mt_stopfx
     
     
     
@@ -7489,30 +7389,25 @@ SOUND_ENTRY:MACRO
 \1_sound
     dc.l    \1_raw
     dc.w    (\1_raw_end-\1_raw)/2,FXFREQBASE/SOUNDFREQ,64
-    dc.b    \3
+    dc.b    \2
     dc.b    $01
-    dc.w    \2,0
-    dc.w    (NB_TICKS_PER_SEC*(\1_raw_end-\1_raw))/SOUNDFREQ-1
-    dc.w    (ORIGINAL_TICKS_PER_SEC*(\1_raw_end-\1_raw))/SOUNDFREQ
-\1_sound_end
-    ds.b    \1_sound_end-\1_sound+Sound_SIZEOF,0
     ENDM
     
-    ; radix,repeats (0: none, -1: infinite) ,channel (0-3)
-    SOUND_ENTRY killed,0,1
-    SOUND_ENTRY credit,0,1
-    SOUND_ENTRY extra_life,10,1
-    SOUND_ENTRY ghost_eaten,0,2
-    SOUND_ENTRY bonus_eaten,0,3
-    SOUND_ENTRY bounce,0,2
-    SOUND_ENTRY eat_1,0,3
-    SOUND_ENTRY eat_2,0,3
-    SOUND_ENTRY loop_1,-1,0
-    SOUND_ENTRY loop_2,-1,0
-    SOUND_ENTRY loop_3,-1,0
-    SOUND_ENTRY loop_4,-1,0
-    SOUND_ENTRY loop_fright,-1,0
-    SOUND_ENTRY loop_eyes,-1,0
+    ; radix, ,channel (0-3)
+    SOUND_ENTRY killed,1
+    SOUND_ENTRY credit,1
+    SOUND_ENTRY extra_life,1
+    SOUND_ENTRY ghost_eaten,2
+    SOUND_ENTRY bonus_eaten,3
+    SOUND_ENTRY bounce,2
+    SOUND_ENTRY eat_1,3
+    SOUND_ENTRY eat_2,3
+    SOUND_ENTRY loop_1,0
+    SOUND_ENTRY loop_2,0
+    SOUND_ENTRY loop_3,0
+    SOUND_ENTRY loop_4,0
+    SOUND_ENTRY loop_fright,0
+    SOUND_ENTRY loop_eyes,0
 
 
     dc.l    0

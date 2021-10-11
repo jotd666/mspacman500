@@ -11,9 +11,9 @@ TODO:
 
 - problems erasing mspacman on high levels
 - fruit appears: yellow dot on right bottom corner/somewhere
-- reduce loop sound sizes using play fx loop
+- reduce loop sound sizes using play fx loop (merge with pacman code)
 - intermission sequences
-- redraw score all the time (maze 1 tunnel/intermission)
+- redraw score all the time (maze 1 tunnel)
 
 FEATURES:
 
@@ -31,14 +31,12 @@ FEATURES:
     and the third shows Pac-Man and Ms. Pac-Man awaiting the arrival of Junior.
     
 
-MINOR ISSUES:
 
-- sound loops not correct (bad loop timing => pops, tricky to make it right): todo: use loopfx!!!
 
 CREDITS:
 
 - jotd: code and gfx/sfx conversion
-- no9: music conversion
+- no9: music conversion to protracker
 - phx: sfx/module player
 - meynaf: random routine
 - eab forum: useful advice & support
@@ -59,11 +57,12 @@ Prerequesites:
 
 Build process:
 
-- To create the ".bin" files and some palette .s asm files,
+- To create the ".bin" files and some palette .s asm files, from "assets" subdir, 
   just run the "convert_sprites.py" python script, then use the "convert_sounds.py"
   python script (audio).
 - python and sox must be installed to be able to perform the wav2raw conversions
+- get "bitplanelib.py" (asset conversion tool needs it) at https://github.com/jotd666/amiga68ktools.git
 
-Binary assets must be created first, then makefile must be called to create the "pacman" program
+Binary assets must be created first, then makefile must be called to create the "mspacman" program
 
 
