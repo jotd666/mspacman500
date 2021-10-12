@@ -134,7 +134,7 @@ DIRECT_GAME_START
 
 EXTRA_LIFE_SCORE = 10000/10
 
-START_LEVEL = 1+THIRD_INTERMISSION_LEVEL
+START_LEVEL = 1+SECOND_INTERMISSION_LEVEL
 
 ; --------------- end debug/adjustable variables
 
@@ -3841,19 +3841,11 @@ update_intro_screen
     dc.w    0
 
 
-; - intermission sequences (timing from YT longplay):
-;  * 3"20 (after level 2): ghost chases pacman, big pacman chases back => DONE
-;  * 7"50 (after level 5): ghost chases pacman, tears his drape on a nail => DONE
-;  * 13"00 (after level 9): ghost chases pacman with repaired drape, but returns almost naked => DONE
-;  * 18"00 (after level 13): same as before
     
 ; sorry for the very bad coding on non-interactive sequences
 ; (intermission/intro). Since it runs OK and always the same,
 ; code is hackish but guaranteed to do the same thing everytime
 ; (and coding those sequences is REALLY tedious)
-
-NAIL_DRAPE_Y_OFFSET = 29
-X_NAIL_HOOKED = X_MAX/2+26
 
 draw_intermission_screen_level_5:
     tst.w   state_timer
@@ -3868,7 +3860,7 @@ draw_intermission_screen_level_5:
     bpl.b   .outd
 
 
-    bsr erase_mspacman    
+    bsr erase_mspacman_chase    
 
     bsr draw_mspacman
     bsr draw_pacman
@@ -3907,22 +3899,21 @@ update_intermission_screen_level_5
     lea robopac(pc),a2
     move.w  #0,xpos(a2)
     move.w  #RIGHT,direction(a2)
-    move.w  #Y_PAC_ANIM+28-80,ypos(a2)
+    move.w  #60,ypos(a2)
     move.w  #1,h_speed(a2)
     clr.w  intermission_phase
+    clr.w   double_chase_speed
     
     bsr init_player
-
         
-    lea player(pc),a2
+    lea player(pc),a3
     clr.w   move_period
     clr.w   animate_pacs
-    move.w  #X_MAX,xpos(a2)
-    move.w  #Y_PAC_ANIM+28,ypos(a2)
-    move.w  #-1,h_speed(a2)
-
+    move.w  #-96,xpos(a3)
+    move.w  #RIGHT,direction(a3)
+    move.w  ypos(a2),ypos(a3)
+    move.w  #1,h_speed(a3)
     
-
     clr.w   clapper_drawn
  
     move.w  #3,d0
@@ -3935,9 +3926,9 @@ update_intermission_screen_level_5
     move.w  state_timer(pc),d0
     
     cmp.w   #$510,d0         ; exact duration of the music
-    beq.b   .music_end
+    beq.b   stop_sounds
     cmp.w   #$520,d0
-    beq.b   .act_end
+    beq.b   act_end
     
     sub.w   #ORIGINAL_TICKS_PER_SEC,d0
     bcs.b   .no_clapper_anim_start
@@ -3950,34 +3941,175 @@ update_intermission_screen_level_5
 .no_clapper_anim_start    
     
     tst.w  clapper_drawn
-    bpl.b   .outd
-   
-    nop
+    bmi.b   .pacs
+    rts
+.pacs
+    ; clapper ended drawing
+
+    move.w  state_timer(pc),d0
+    move.w  D0,$100
+    
+    cmp.w   #1,intermission_phase
+    beq.b   chase1
+    cmp.w   #2,intermission_phase
+    beq.b   chase2
+    cmp.w   #3,intermission_phase
+    beq.b   chase1
+    cmp.w   #4,intermission_phase
+    beq.b   chase2
+    cmp.w   #5,intermission_phase
+    beq.b   chase1
+    cmp.w   #6,intermission_phase
+    beq.b   chase2
+
+    cmp.w   #$518,d0    ; wait for second melody to start
+    bne.b   .no_6th
+    move.w  #6,intermission_phase
+    bra.b   chase1
+.no_6th
+    cmp.w   #$418+$80,d0    ; wait for second melody to start
+    bne.b   .no_5th
+    move.w  #5,intermission_phase
+    bra.b   chase1
+.no_5th
+    cmp.w   #$418,d0    ; wait for second melody to start
+    bne.b   .no_4th
+    move.w  #4,intermission_phase
+    bra.b   chase1
+.no_4th
+    cmp.w   #$318,d0    ; wait for second melody to start
+    bne.b   .no_3rd
+    move.w  #3,intermission_phase
+    bra.b   chase1
+.no_3rd
+    cmp.w   #$218,d0    ; wait for second melody to start
+    bne.b   .no_2nd
+    move.w  #2,intermission_phase
+    bra.b   chase2
+.no_2nd
+    cmp.w   #$118,d0    ; wait for first melody to start
+    bne.b   pacs_act_anim
+    move.w  #1,intermission_phase
+    
+chase1    ; also chase3
+    ; animate pacs
+    bsr get_chase_speeds
+    
+    lea robopac(pc),a3
+    move.w  xpos(a3),d2
+    add.w   d0,d2
+    bmi.b   .st1
+    cmp.w   #X_MAX+4,d2
+    bcc.b   .nm1
+.st1
+    move.w  d2,xpos(a3)
+.nm1    
+    lea player(pc),a3
+    move.w  xpos(a3),d2
+    addq.w  #1,move_period
+    cmp.w   #4,move_period
+    bne.b   .nompres
+    clr.w   move_period
+    add.w   d1,d2
+.nompres
+    add.w   d0,d2
+    bmi.b   .st2
+    cmp.w   #X_MAX+4,d2
+    bcc.b   .nm2
+.st2
+    move.w  d2,xpos(a3)
+    bra.b   .outd
+.nm2
+    tst.w   double_chase_speed
+    beq.b   .not_last
+    ; no more chases
+    clr.w   intermission_phase
+    rts
+.not_last
+    cmp.w   #1,intermission_phase
+    beq.b   .goto_phase2
+    ; goto phase 4
+    move.w  #1,double_chase_speed
+    clr.w  intermission_phase   ; wait until next phase
+    rts
+.goto_phase2
+    ; phase 2: pacman chases mspacman
+    clr.w  intermission_phase   ; wait until next phase
+    lea robopac(pc),a2
+    move.w  #X_MAX+96,xpos(a2)
+    move.w  #LEFT,direction(a2)
+    move.w  #160,ypos(a2)
+    move.w  #-1,h_speed(a2)
+        
+    lea player(pc),a3
+    clr.w   move_period
+    clr.w   animate_pacs
+    move.w  #X_MAX,xpos(a3)
+    move.w  #LEFT,direction(a3)
+    move.w  ypos(a2),ypos(a3)
+    move.w  #-1,h_speed(a3)
+    rts
 .outd    
+    bra     pacs_act_anim
+
+chase2   
+    bsr get_chase_speeds
+    ; animate pacs
+    lea robopac(pc),a3
+    move.w  xpos(a3),d2
+    addq.w  #1,move_period
+    cmp.w   #4,move_period
+    bne.b   .nompres
+    clr.w   move_period
+    sub.w   d1,d2
+.nompres
+    sub.w   d0,d2
+    bmi.b   .nm2        ; pacman disappeared: next phase
+    move.w  d2,xpos(a3)
+ 
+    lea player(pc),a3
+    move.w  xpos(a3),d2
+
+    sub.w   d0,d2
+    bmi.b   .outd
+
+    move.w  d2,xpos(a3)
+    bra.b   .outd
+.nm2
+    ; phase 2: pacman chases mspacman
+    clr.w  intermission_phase   ; wait until next phase
+    lea robopac(pc),a2
+    clr.w   xpos(a2)
+    move.w  #RIGHT,direction(a2)
+    move.w  #136,ypos(a2)
+    move.w  #1,h_speed(a2)
+        
+    lea player(pc),a3
+    clr.w   move_period
+    clr.w   animate_pacs
+    move.w  #-96,xpos(a3)
+    move.w  #RIGHT,direction(a3)
+    move.w  ypos(a2),ypos(a3)
+    move.w  #1,h_speed(a3)
     rts
-.speed_variation
-    move.w  move_period(pc),d5
-    add.w   #1,d5
-    cmp.w   #2,d5
-    bne.b   .no_fast_chars
-    add.w   d0,d0
-    add.w   d1,d1
-    bra.b   .no_speedup
-.no_fast_chars
-    cmp.w   #4,d5
-    bne.b   .no_speedup
-    ; faster ghost
-    add.w   d1,d1
-    clr.w   d5
-.no_speedup
-    move.w  d5,move_period
-    rts
-.act_end
+.outd    
+    bra     pacs_act_anim
+act_end
     move.w  #STATE_NEXT_LEVEL,current_state
     rts
-.music_end
-    bra stop_sounds    
 
+get_chase_speeds
+    move.w  #3,d0
+    move.w  #1,d1
+    tst.w   double_chase_speed
+    beq.b   .no_double_speed
+    add.w   d0,d0
+    add.w   d1,d1
+.no_double_speed
+    rts
+    
+double_chase_speed
+    dc.w    0
     
 update_intermission_screen_level_9:
     tst.w   state_timer
@@ -4014,9 +4146,9 @@ update_intermission_screen_level_9:
     add.w   #1,state_timer
     move.w  state_timer(pc),d0
     cmp.w   #$13C,d0         ; exact duration of the music
-    beq.b   .music_end
+    beq.b   stop_sounds
     cmp.w   #$140,d0
-    beq.b   .act_end
+    beq.b   act_end
     
     sub.w   #ORIGINAL_TICKS_PER_SEC,d0
     bcs.b   .no_clapper_anim_start
@@ -4034,11 +4166,7 @@ update_intermission_screen_level_9:
     nop
 .outd    
     rts
-.act_end
-    move.w  #STATE_NEXT_LEVEL,current_state
-    rts
-.music_end
-    bra stop_sounds     
+     
 
     
 draw_intermission_screen_level_2:
@@ -4179,7 +4307,7 @@ update_intermission_screen_level_2
     lea robopac(pc),a2
     move.w  #0,xpos(a2)
     move.w  #RIGHT,direction(a2)
-    move.w  #Y_PAC_ANIM+28-80,ypos(a2)
+    move.w  #92,ypos(a2)
     move.w  #1,h_speed(a2)
     clr.w  intermission_phase
     clr.w   ghost_collided
@@ -4192,7 +4320,7 @@ update_intermission_screen_level_2
     clr.w   move_period
     clr.w   animate_pacs
     move.w  #X_MAX,xpos(a2)
-    move.w  #Y_PAC_ANIM+28,ypos(a2)
+    move.w  #172,ypos(a2)
     move.w  #-1,h_speed(a2)
     lea ghosts(pc),a3
     moveq   #3,d0
@@ -4213,7 +4341,8 @@ update_intermission_screen_level_2
     move.w  #1,h_speed(a3)    
     move.w  #-96,xpos(a3)
     move.w  #RIGHT,direction(a3)
-    move.w  #Y_PAC_ANIM+28-80,ypos(a3)
+    lea robopac(pc),a2
+    move.w  ypos(a2),ypos(a3)
     
 
     clr.w   clapper_drawn
@@ -4230,9 +4359,9 @@ update_intermission_screen_level_2
     move.w  state_timer(pc),d0
     
     cmp.w   #$204,d0         ; exact duration of the music
-    beq.b   .music_end
+    beq.b   stop_sounds
     cmp.w   #$224,d0
-    beq.b   .act_end
+    beq.b   act_end
     
     sub.w   #ORIGINAL_TICKS_PER_SEC,d0
     bcs.b   .no_clapper_anim_start
@@ -4314,7 +4443,7 @@ update_intermission_screen_level_2
     move.w  #2,ghost_collided
 .cont
     move.w   (ypos,a4),d2
-    cmp.w   #56,d2
+    cmp.w   #78,d2
     bcs.b   .last_phase
     
     add.w   d0,d2
@@ -4370,7 +4499,7 @@ update_intermission_screen_level_2
     lea     player(pc),a4
     ; reset ghosts&pac positions
     move.w  #0,xpos(a4)
-    move.w  #Y_PAC_ANIM+28-40,d0
+    move.w  #136,d0
     move.w  #1,h_speed(a4)    
     move.w  #RIGHT,direction(a4)
     move.w  d0,ypos(a4)
@@ -4425,11 +4554,8 @@ update_intermission_screen_level_2
 .no_speedup
     move.w  d5,move_period
     rts
-.act_end
-    move.w  #STATE_PLAYING,current_state
-    rts
-.music_end
-    bra stop_sounds
+
+
     
 move_period
      dc.w    0
@@ -5780,6 +5906,43 @@ level_completed:
     move.w  #STATE_LEVEL_COMPLETED,current_state
     rts
 
+
+erase_mspacman_chase
+	lea	player(pc),a4
+
+	move.w	xpos(a4),d0
+    bpl.b   .normal_erase
+    rts
+.normal_erase
+	
+    ; first roughly clear some pacman zones that can remain. We don't test the directions
+    ; just clear every possible pixel that could remain whatever the direction was/is
+    
+    bsr wait_blit   ; (just in case the blitter didn't finish writing pacman)
+
+
+    ; erase is optimized. Mrs pacman uses 3 colors on 3 planes, but the blue color
+    ; is (on purpose) on the same level as the second maze plane. Since the color appears
+    ; only inside mrs pacman bob, no need to clear it, the next blit does the job
+    ; so now no need to be careful when deleting mrs pacman other planes or partially
+    ; redraw the maze or whatever: just bruteforce clear the planes
+    move.l  previous_mspacman_address(pc),a3
+    cmp.l   #0,a3
+    beq.b   .verased
+
+.no_verase
+    ; right
+    REPT    16
+    clr.w   (NB_BYTES_PER_LINE*(REPTN)+2,a3)
+    clr.w  (NB_BYTES_PER_LINE*(REPTN)+SCREEN_PLANE_SIZE+2,a3)
+    ENDR  
+.erase_left
+    REPT    16
+    clr.w  (NB_BYTES_PER_LINE*(REPTN)-2,a3)
+    clr.w  (NB_BYTES_PER_LINE*(REPTN)-2+SCREEN_PLANE_SIZE,a3)
+    ENDR  
+.verased
+    rts
 	
 erase_mspacman
 	lea	player(pc),a4
@@ -5859,6 +6022,9 @@ draw_pacman:
 .pacblit
     lea	screen_data+SCREEN_PLANE_SIZE,a1
     move.w  xpos(a2),d0
+    bpl.b   .do_draw
+    rts
+.do_draw    
     move.w  ypos(a2),d1
     ; center => top left
     moveq.l #-1,d2 ; mask
@@ -5927,6 +6093,9 @@ draw_mspacman:
     move.l  (a0,d0.w),a0
 .pacblit
     move.w  xpos(a2),d0
+    bpl.b   .do_draw
+    rts
+.do_draw
     move.w  ypos(a2),d1
     ; center => top left
     moveq.l #-1,d2 ; mask
