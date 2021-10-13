@@ -9,10 +9,9 @@ REQUIRES:
 
 TODO: 
 
-- problems erasing mspacman on high levels
+- problems erasing mspacman on high levels: use blitter to avoid tearing
 - fruit appears: yellow dot on right bottom corner/somewhere
-- reduce loop sound sizes using play fx loop (merge with pacman code)
-- intermission sequences
+- intermission sequence 3
 - redraw score all the time (maze 1 tunnel)
 
 FEATURES:
@@ -40,6 +39,7 @@ CREDITS:
 - phx: sfx/module player
 - meynaf: random routine
 - eab forum: useful advice & support
+- Rob Northen: unpacker (http://aminet.net/util/pack/RNC_ProPack.lha)
 - 125scratch: sprite rips https://www.spriters-resource.com/arcade/mspacman/
 - midway/gcc: original game :)
 
@@ -47,13 +47,16 @@ BUILDING FROM SOURCES:
 
 Prerequesites:
 
-- Windows or Linux
+- Windows
 - python
-- sox
-- vasm 68k
+- Amiga NDK
+- sox (included)
+- vasm 68k (included)
+- rnc (Rob Nothen cruncher unofficial port, included)
 
-(besides the .bin files created from png by python, the rest of the process could be built on an amiga with phxass
+* besides the .bin files created from png by python, the rest of the process could be built on an amiga with phxass
  or some other assembler and sox for the amiga, but you have to be really mad to attempt it in 2021...)
+* could be done on Linux, just rebuild the rnc cruncher & vasm
 
 Build process:
 

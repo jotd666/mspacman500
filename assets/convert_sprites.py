@@ -1,4 +1,4 @@
-import os,bitplanelib,json
+import os,bitplanelib,json,subprocess
 from PIL import Image
 
 sprites_dir = "sprites"
@@ -121,8 +121,10 @@ def process_mazes():
             # now dump each maze with its own palette
             maze_palette = [(0,0,0),(0,0,0),outline_color,fill_color]  # black, dot color, maze colors
 
-            bitplanelib.palette_image2raw(maze_img,r"../{}/maze_{}.bin".format(sprites_dir,i),maze_palette)
-
+            maze_bin_filepath = r"../{}/maze_{}.bin".format(sprites_dir,i)
+            bitplanelib.palette_image2raw(maze_img,maze_bin_filepath,maze_palette)
+            # pack it
+            subprocess.check_call(["rnc",maze_bin_filepath])
         # extra colors
         fw.write("\nmaze_5_misc:\n")
         fw.write("\tdc.w\t${:x}  ; dots\n".format(0xFF))    # cyan

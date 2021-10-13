@@ -706,15 +706,18 @@ init_level:
     add.w   d0,d0   ; *4 to make *16
     ; maze_dot_table_read_only,maze_wall_table,maze_colors,maze_bitmap
 
-    lea     maze_table,a0
+    lea     maze_table(pc),a0
     lea (a0,d0.w),a0
     move.l  (a0)+,dot_table_read_only
     move.l  (a0)+,maze_wall_table
     move.l  (a0)+,maze_misc
-    move.l  (a0)+,D0
-    move.l  d0,maze_bitmap_plane_1
-    add.l  #NB_BYTES_PER_MAZE_LINE*NB_LINES,d0
-    move.l  d0,maze_bitmap_plane_2
+    move.l  (a0)+,a0        ; packed data
+    lea     maze_bitmap,a1
+    bsr     Unpack      ; RNC decruncher
+    
+    move.l  a1,maze_bitmap_plane_1
+    add.l  #NB_BYTES_PER_MAZE_LINE*NB_LINES,a1
+    move.l  a1,maze_bitmap_plane_2
     
     ; level
     move.w  level_number,d2
@@ -3896,23 +3899,18 @@ update_intermission_screen_level_5
     bne.b   .no_pac_demo_anim_init
     lea robopac(pc),a0
     bsr init_any_pac
-    lea robopac(pc),a2
-    move.w  #0,xpos(a2)
-    move.w  #RIGHT,direction(a2)
-    move.w  #60,ypos(a2)
-    move.w  #1,h_speed(a2)
+    lea robopac(pc),a0
+    clr.l   xpos(a0)
+
+    bsr init_player
+
+    lea player(pc),a0
+    clr.l   xpos(a0) ; X and Y
+        
     clr.w  intermission_phase
     clr.w   double_chase_speed
-    
-    bsr init_player
-        
-    lea player(pc),a3
     clr.w   move_period
     clr.w   animate_pacs
-    move.w  #-96,xpos(a3)
-    move.w  #RIGHT,direction(a3)
-    move.w  ypos(a2),ypos(a3)
-    move.w  #1,h_speed(a3)
     
     clr.w   clapper_drawn
  
@@ -3949,47 +3947,85 @@ update_intermission_screen_level_5
     move.w  state_timer(pc),d0
     move.w  D0,$100
     
-    cmp.w   #1,intermission_phase
-    beq.b   chase1
-    cmp.w   #2,intermission_phase
-    beq.b   chase2
-    cmp.w   #3,intermission_phase
-    beq.b   chase1
-    cmp.w   #4,intermission_phase
-    beq.b   chase2
-    cmp.w   #5,intermission_phase
-    beq.b   chase1
-    cmp.w   #6,intermission_phase
-    beq.b   chase2
 
-    cmp.w   #$518,d0    ; wait for second melody to start
-    bne.b   .no_6th
-    move.w  #6,intermission_phase
-    bra.b   chase1
-.no_6th
-    cmp.w   #$418+$80,d0    ; wait for second melody to start
+    cmp.w   #$418+$48,d0    ; wait for second melody to start
     bne.b   .no_5th
     move.w  #5,intermission_phase
-    bra.b   chase1
+    bra.b   .init_mspac_chases_pac 
 .no_5th
     cmp.w   #$418,d0    ; wait for second melody to start
     bne.b   .no_4th
     move.w  #4,intermission_phase
-    bra.b   chase1
+    move.w  #1,double_chase_speed
+    
+    bra.b   .init_pac_chases_mspac 
 .no_4th
     cmp.w   #$318,d0    ; wait for second melody to start
     bne.b   .no_3rd
+
+    lea robopac(pc),a2
+    clr.w   xpos(a2)
+    move.w  #RIGHT,direction(a2)
+    move.w  #136,ypos(a2)
+    move.w  #1,h_speed(a2)
+        
+    lea player(pc),a3
+    move.w  #-96,xpos(a3)
+    move.w  direction(a2),direction(a3)
+    move.w  ypos(a2),ypos(a3)
+    move.w  h_speed(a2),h_speed(a3)    
+    
     move.w  #3,intermission_phase
-    bra.b   chase1
+    bra.b   .nothing_special 
 .no_3rd
     cmp.w   #$218,d0    ; wait for second melody to start
     bne.b   .no_2nd
     move.w  #2,intermission_phase
-    bra.b   chase2
+
+.init_pac_chases_mspac    
+    lea robopac(pc),a2
+    move.w  #X_MAX+96,xpos(a2)
+    move.w  #LEFT,direction(a2)
+    move.w  #160,ypos(a2)
+    move.w  #-1,h_speed(a2)
+        
+    lea player(pc),a3
+    move.w  #X_MAX,xpos(a3)
+    move.w  direction(a2),direction(a3)
+    move.w  ypos(a2),ypos(a3)
+    move.w  h_speed(a2),h_speed(a3)
+    
+    bra.b   .nothing_special 
 .no_2nd
     cmp.w   #$118,d0    ; wait for first melody to start
-    bne.b   pacs_act_anim
+    bne.b   .nothing_special
     move.w  #1,intermission_phase
+.init_mspac_chases_pac    
+
+    lea robopac(pc),a2
+    move.w  #0,xpos(a2)
+    move.w  #RIGHT,direction(a2)
+    move.w  #60,ypos(a2)
+    move.w  #1,h_speed(a2)
+
+    lea player(pc),a3
+    move.w  #-96,xpos(a3)
+    move.w  direction(a2),direction(a3)
+    move.w  ypos(a2),ypos(a3)
+    move.w  h_speed(a2),h_speed(a3)
+    
+    bra.b   chase1
+.nothing_special    
+    move.w  intermission_phase(pc),d1
+    beq.b   .out
+    cmp.w   #7,d1
+    bne.b   .continue
+.out
+    rts     ; no need to do anything
+.continue
+    btst    #0,d1
+    beq.b   chase2
+
     
 chase1    ; also chase3
     ; animate pacs
@@ -3999,7 +4035,7 @@ chase1    ; also chase3
     move.w  xpos(a3),d2
     add.w   d0,d2
     bmi.b   .st1
-    cmp.w   #X_MAX+4,d2
+    cmp.w   #X_MAX+8,d2
     bcc.b   .nm1
 .st1
     move.w  d2,xpos(a3)
@@ -4014,41 +4050,15 @@ chase1    ; also chase3
 .nompres
     add.w   d0,d2
     bmi.b   .st2
-    cmp.w   #X_MAX+4,d2
+    cmp.w   #X_MAX+8,d2
     bcc.b   .nm2
 .st2
     move.w  d2,xpos(a3)
     bra.b   .outd
 .nm2
-    tst.w   double_chase_speed
-    beq.b   .not_last
-    ; no more chases
     clr.w   intermission_phase
     rts
-.not_last
-    cmp.w   #1,intermission_phase
-    beq.b   .goto_phase2
-    ; goto phase 4
-    move.w  #1,double_chase_speed
-    clr.w  intermission_phase   ; wait until next phase
-    rts
-.goto_phase2
-    ; phase 2: pacman chases mspacman
-    clr.w  intermission_phase   ; wait until next phase
-    lea robopac(pc),a2
-    move.w  #X_MAX+96,xpos(a2)
-    move.w  #LEFT,direction(a2)
-    move.w  #160,ypos(a2)
-    move.w  #-1,h_speed(a2)
-        
-    lea player(pc),a3
-    clr.w   move_period
-    clr.w   animate_pacs
-    move.w  #X_MAX,xpos(a3)
-    move.w  #LEFT,direction(a3)
-    move.w  ypos(a2),ypos(a3)
-    move.w  #-1,h_speed(a3)
-    rts
+
 .outd    
     bra     pacs_act_anim
 
@@ -4076,21 +4086,7 @@ chase2
     move.w  d2,xpos(a3)
     bra.b   .outd
 .nm2
-    ; phase 2: pacman chases mspacman
     clr.w  intermission_phase   ; wait until next phase
-    lea robopac(pc),a2
-    clr.w   xpos(a2)
-    move.w  #RIGHT,direction(a2)
-    move.w  #136,ypos(a2)
-    move.w  #1,h_speed(a2)
-        
-    lea player(pc),a3
-    clr.w   move_period
-    clr.w   animate_pacs
-    move.w  #-96,xpos(a3)
-    move.w  #RIGHT,direction(a3)
-    move.w  ypos(a2),ypos(a3)
-    move.w  #1,h_speed(a3)
     rts
 .outd    
     bra     pacs_act_anim
@@ -5918,7 +5914,6 @@ erase_mspacman_chase
     ; first roughly clear some pacman zones that can remain. We don't test the directions
     ; just clear every possible pixel that could remain whatever the direction was/is
     
-    bsr wait_blit   ; (just in case the blitter didn't finish writing pacman)
 
 
     ; erase is optimized. Mrs pacman uses 3 colors on 3 planes, but the blue color
@@ -5934,12 +5929,13 @@ erase_mspacman_chase
     ; right
     REPT    16
     clr.w   (NB_BYTES_PER_LINE*(REPTN)+2,a3)
-    clr.w  (NB_BYTES_PER_LINE*(REPTN)+SCREEN_PLANE_SIZE+2,a3)
-    ENDR  
-.erase_left
+    clr.l  (NB_BYTES_PER_LINE*(REPTN)-4,a3)
+    ENDR
+    
+    bsr wait_blit   ; (just in case the blitter didn't finish writing pacman)
     REPT    16
-    clr.w  (NB_BYTES_PER_LINE*(REPTN)-2,a3)
-    clr.w  (NB_BYTES_PER_LINE*(REPTN)-2+SCREEN_PLANE_SIZE,a3)
+    clr.l  (NB_BYTES_PER_LINE*(REPTN)-4+SCREEN_PLANE_SIZE,a3)
+    clr.w  (NB_BYTES_PER_LINE*(REPTN)+SCREEN_PLANE_SIZE+2,a3)
     ENDR  
 .verased
     rts
@@ -6022,7 +6018,11 @@ draw_pacman:
 .pacblit
     lea	screen_data+SCREEN_PLANE_SIZE,a1
     move.w  xpos(a2),d0
+    cmp.w   #X_MAX+16,d0
+    bcc.b   .no_draw
+    tst.w   d0
     bpl.b   .do_draw
+.no_draw
     rts
 .do_draw    
     move.w  ypos(a2),d1
@@ -6920,6 +6920,7 @@ dosname
         dc.b    "dos.library",0
             even
     include ReadJoyPad.s
+    include RNC_1C.s
     ; variables
 gfxbase_copperlist
     dc.l    0
@@ -7866,6 +7867,9 @@ fruit_bounce_table
     dc.w    -1,0,-1,0,0,0,1,1
 end_fruit_bounce_table
     even
+
+    include "maze_data.s"       ; generated by "convert_sprites.py" python script
+
     
 ; BSS --------------------------------------
     SECTION  S2,BSS
@@ -7884,6 +7888,7 @@ dot_table
     ds.b    NB_TILES_PER_LINE*NB_TILE_LINES
     
     even
+    
     
     SECTION  S3,CODE
     include ptplayer.s
@@ -7952,14 +7957,8 @@ end_color_copper:
    dc.w intreq,$8010            ; generate copper interrupt
     dc.l    -2
 
-    include "maze_data.s"       ; generated by "convert_sprites.py" python script
-
-
     
-; add small safety in case some blit goes beyond screen
-screen_data:
-    ds.b    SCREEN_PLANE_SIZE*NB_PLANES+NB_BYTES_PER_LINE,0
-	
+     
 ghost_bob_table:
     dc.l    .ghost_bobs,.ghost_bobs+320,.ghost_bobs+320*2,.ghost_bobs+320*3
 .ghost_bobs:
@@ -8254,5 +8253,12 @@ music:
 empty_sprite
     dc.l    0,0
 
+    
+    SECTION S_4,BSS,CHIP
+; add small safety in case some blit goes beyond screen
+screen_data:
+    ds.b    SCREEN_PLANE_SIZE*NB_PLANES+NB_BYTES_PER_LINE,0
+maze_bitmap
+     ds.b   NB_BYTES_PER_MAZE_LINE*NB_LINES*2,0
     
     	
