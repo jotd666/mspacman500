@@ -90,6 +90,7 @@
   },
 {
    "name":"baby_wrap",
+   "generate_mask":true,
    "frames":1,
    "start_x":96,
    "start_y":16

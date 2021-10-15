@@ -134,7 +134,7 @@ DIRECT_GAME_START
 
 EXTRA_LIFE_SCORE = 10000/10
 
-START_LEVEL = 1+SECOND_INTERMISSION_LEVEL
+START_LEVEL = 1+THIRD_INTERMISSION_LEVEL
 
 ; --------------- end debug/adjustable variables
 
@@ -3871,6 +3871,96 @@ draw_intermission_screen_level_5:
 .outd    
     rts
 
+update_intermission_screen_level_9:
+    tst.w   state_timer
+    bne.b   .no_pac_demo_anim_init
+    lea robopac(pc),a0
+    bsr init_any_pac
+    lea robopac(pc),a2
+    move.w  #24,xpos(a2)
+    move.w  #4,frame(a2)
+    move.w  #RIGHT,direction(a2)
+    move.w  #200,ypos(a2)
+    clr.w  intermission_phase
+    
+    bsr init_player
+
+        
+    lea player(pc),a2
+    move.w  #2,frame(a2)
+    move.w  #40,xpos(a2)
+    move.w  #200+2,ypos(a2)
+    move.w  #RIGHT,direction(a2)
+
+    move.w  #X_MAX,stork_x
+    move.w  #100-Y_START,stork_y
+    move.w  stork_x(pc),junior_x
+    move.w  stork_y(pc),junior_y
+    clr.w   stork_frame
+    clr.w   baby_released
+    clr.w   pac_drawn
+    clr.w   clapper_drawn
+ 
+    move.w  #8,d0
+    bsr play_music
+ 
+.no_pac_demo_anim_init
+  
+    add.w   #1,state_timer
+    move.w  state_timer(pc),d0
+    cmp.w   #$13C,d0         ; exact duration of the music
+    beq.b   stop_sounds
+    cmp.w   #$200,d0
+    beq.b   act_end
+    
+    sub.w   #ORIGINAL_TICKS_PER_SEC,d0
+    bcs.b   .no_clapper_anim_start
+    cmp.w   #4*10,d0
+    bcc.b   .clapper_anim_stop    
+    move.w  d0,clapper_drawn
+    bra.b   .no_clapper_anim_start    
+.clapper_anim_stop
+    move.w  #-1,clapper_drawn
+.no_clapper_anim_start    
+    
+    tst.w  clapper_drawn
+    bpl.b   .outd
+   
+    move.w  stork_frame(pc),d0
+    add.w   #1,d0
+    cmp.w   #20,d0
+    bne.b   .sfok
+    clr.w   d0
+.sfok
+    move.w  d0,stork_frame
+    move.w  stork_x(pc),d0
+    add.w   #32,d0    
+    bmi.b   .outd
+    
+    moveq.w #1,d1
+    tst.w   baby_released
+    beq.b   .slower
+    add.w   d1,d1
+    sub.w   d1,stork_x
+    ; baby falling
+    cmp.w   #2,baby_released
+    beq.b   .bouncing
+    sub.w   #1,junior_x
+    add.w   #1,junior_y
+    bra.b   .outd
+.bouncing
+    bra.b   .outd
+.slower
+    sub.w   d1,stork_x
+    sub.w   d1,junior_x
+    cmp.w   #X_MAX-64,stork_x
+    bne.b   .no_release
+    move.w  #1,baby_released
+.no_release
+.outd    
+    rts
+     
+
 draw_intermission_screen_level_9:
     tst.w   state_timer
     beq.b   .outd
@@ -3883,16 +3973,121 @@ draw_intermission_screen_level_9:
     tst.w  clapper_drawn
     bpl.b   .outd
 
-
-    bsr erase_mspacman    
-
+    tst.w   pac_drawn
+    bne.b   .no_draw
     bsr draw_mspacman
     bsr draw_pacman
+    move.w  #1,pac_drawn
+.no_draw
+    lea     screen_data,a1
+    move.w  stork_x(pc),d0
+    add.w   #24,d0
     
+    bpl.b   .xpositive
+    clr.w   d0
+.xpositive
+    cmp.w   #X_MAX-36,d0
+    bcc.b   .no_erase
+    move.w  stork_y(pc),d1
+    move.w  #2,d2
+    bsr     clear_plane_any
+    add.w   #SCREEN_PLANE_SIZE,a1
+    bsr     clear_plane_any
+    add.w   #SCREEN_PLANE_SIZE,a1
+    bsr     clear_plane_any
+    add.w   #SCREEN_PLANE_SIZE,a1
+    bsr     clear_plane_any
+    
+    cmp.w   #1,baby_released
+    bne.b   .no_erase
+    lea     screen_data,a1
+    ; also erase baby wrap
+    move.w  junior_x(pc),d0
+    move.w  junior_y(pc),d1
+    move.w  #2,d2
+    bsr     clear_plane_any
+    add.w   #SCREEN_PLANE_SIZE,a1
+    bsr     clear_plane_any
+    add.w   #SCREEN_PLANE_SIZE,a1
+    bsr     clear_plane_any
+    add.w   #SCREEN_PLANE_SIZE,a1
+    bsr     clear_plane_any
+    
+.no_erase    
+    lea stork_0,a0
+    cmp.w   #10,stork_frame
+    bcc.b   .okframe
+    lea stork_1,a0
+.okframe
+    ; wraps
+    move.w  stork_x(pc),d0
+    bpl.b   .positive
+    add.w   #NB_BYTES_PER_LINE*8,d0    
+.positive
+    move.w  d0,d6
+    move.w  stork_y(pc),d1
+    move.l  #-1,d3
+
+    move.w  #6,d2
+    move.w  #16,D4 ; blit height
+ 
+    lea     screen_data,a1
+    move.l  a1,a2
+    bsr blit_plane_any
+
+    moveq   #2,d5
+.loop
+    add.w   #SCREEN_PLANE_SIZE,a2
+    move.l  a2,a1
+    add.w   #16*6,a0
+    move.w  d6,d0
+    move.w  stork_y(pc),d1
+    move.w  #6,d2
+    
+    bsr blit_plane_any
+    ; right clip
+    ; clear previous plane now that blit has ended
+    lea (-SCREEN_PLANE_SIZE,a2),a1
+    move.w  #X_MAX,d0
+    move.w  stork_y(pc),d1
+    move.w  #8,d2
+    bsr     clear_plane_any
+    dbf d5,.loop
+
+    bsr wait_blit
+    move.l  a2,a1
+    move.w  #X_MAX,d0
+    move.w  stork_y(pc),d1
+    move.w  #8,d2
+    bsr     clear_plane_any
+
+    
+    ; baby wrap
+    move.w  junior_x(pc),d0
+    move.w  junior_y(pc),d1
+    move.w  d0,d3
+    move.w  d1,d4
+    lea baby_wrap,a0
+    lea 256(a0),a3
+    lea screen_data,a1
+    move.l  a1,a2
+    move.l  #-1,d2
+    moveq   #3,d5
+.wrap_loop
+    move.w  d3,d0
+    move.w  d4,d1
+    bsr blit_plane_cookie_cut
+    add.w   #SCREEN_PLANE_SIZE,a2
+    move.l  a2,a1
+    add.w   #64,a0
+    dbf d5,.wrap_loop
+.no_stork_draw
+ 
 .outd    
     rts
 
-    
+pac_drawn
+        dc.w    0
 
 update_intermission_screen_level_5
     tst.w   state_timer
@@ -4107,62 +4302,7 @@ get_chase_speeds
 double_chase_speed
     dc.w    0
     
-update_intermission_screen_level_9:
-    tst.w   state_timer
-    bne.b   .no_pac_demo_anim_init
-    lea robopac(pc),a0
-    bsr init_any_pac
-    lea robopac(pc),a2
-    move.w  #0,xpos(a2)
-    move.w  #RIGHT,direction(a2)
-    move.w  #Y_PAC_ANIM+28-80,ypos(a2)
-    move.w  #1,h_speed(a2)
-    clr.w  intermission_phase
-    
-    bsr init_player
 
-        
-    lea player(pc),a2
-    clr.w   move_period
-    clr.w   animate_pacs
-    move.w  #X_MAX,xpos(a2)
-    move.w  #Y_PAC_ANIM+28,ypos(a2)
-    move.w  #-1,h_speed(a2)
-
-    
-
-    clr.w   clapper_drawn
- 
-    move.w  #8,d0
-    bsr play_music
- 
-.no_pac_demo_anim_init
-  
-
-    add.w   #1,state_timer
-    move.w  state_timer(pc),d0
-    cmp.w   #$13C,d0         ; exact duration of the music
-    beq.b   stop_sounds
-    cmp.w   #$140,d0
-    beq.b   act_end
-    
-    sub.w   #ORIGINAL_TICKS_PER_SEC,d0
-    bcs.b   .no_clapper_anim_start
-    cmp.w   #4*10,d0
-    bcc.b   .clapper_anim_stop    
-    move.w  d0,clapper_drawn
-    bra.b   .no_clapper_anim_start    
-.clapper_anim_stop
-    move.w  #-1,clapper_drawn
-.no_clapper_anim_start    
-    
-    tst.w  clapper_drawn
-    bpl.b   .outd
-   
-    nop
-.outd    
-    rts
-     
 
     
 draw_intermission_screen_level_2:
@@ -4247,9 +4387,6 @@ draw_clapper
     move.w  #CLAPPER_X,d0
     move.w  #CLAPPER_Y,d1
     lea     screen_data,a1
-    move.w  #6,d2
-    move.l  #-1,d3
-    move.w  #16,d4
     bsr     blit_plane_any
 
     lea     screen_data,a1
@@ -4276,10 +4413,7 @@ draw_clapper
     move.w  #CLAPPER_Y,d1
     move.w  #6,d2
     bsr     clear_plane_any
-    lea     screen_data,a1
-    move.w  #CLAPPER_X,d0
     move.w  #CLAPPER_Y+16,d1
-    move.w  #6,d2
     bsr     clear_plane_any
     rts
     
@@ -6290,7 +6424,6 @@ blit_plane
 ; < D0: X
 ; < D1: Y
 ; < D2: blit mask
-; < D3: height
 ; trashes: D0-D1
 ; returns: A1 as start of destination (A1 = orig A1+40*D1+D0/16)
 
@@ -7082,7 +7215,19 @@ elroy_threshold_1
 elroy_threshold_2
     dc.b    0
     even
-
+stork_x
+    dc.w    0
+stork_y
+    dc.w    0
+junior_x
+    dc.w    0
+junior_y
+    dc.w    0
+stork_frame
+    dc.w    0
+baby_released
+    dc.w    0
+    
 bonus_score_display_message:
     dc.w    0
 ready_display_message:
@@ -7967,6 +8112,15 @@ ghost_bob_table:
     incbin  "cyan_ghost_bob.bin"
     incbin  "orange_ghost_bob.bin"
 
+stork_0
+    incbin  "stork_0.bin"
+stork_1
+    incbin  "stork_1.bin"
+baby_wrap
+    incbin  "baby_wrap.bin"
+junior:
+    incbin  "junior.bin"
+    
 heart
     incbin  "heart.bin"
 mrpac_left_0
