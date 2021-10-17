@@ -5,18 +5,17 @@ the original, though.
 
 REQUIRES:
 
-- Any kickstart, 512k memory
+- Kickstart 1.3, 512k memory or
+- Kickstart 2.0, 1MB memory
 
 TODO: 
 
-- problems erasing mspacman on high levels
-  => erase plane 2 (previous address on 2 bytes x 16) using blitter, draw plane 2
-     erase plane 3 with cpu, draw plane 3
+
 - fruit appears: yellow dot on right bottom corner/somewhere
-- intermission sequence 3 end: bounce not working
 - player killed: erase fruit again/redraw maze with dots
-- test all levels to see if the layout respects the original game
-- redraw score all the time (maze 1 tunnel)
+- test all levels to see if the layout respects the original game: 1-13 OK
+- demo mode
+- level 14->xxx not the same as arcade
 
 FEATURES:
 
@@ -28,14 +27,17 @@ FEATURES:
 - joystick controlled (port 1)
 - can run directly from shell or from whdload (fast machines/complex configurations)
 
+MINOR ISSUES:
 
-    The intermissions have been changed to "Acts". The first one shows how Pac-Man and Ms. Pac-Man first meet,
-    the second shows the two chasing each other around the screen,
-    and the third shows Pac-Man and Ms. Pac-Man awaiting the arrival of Junior.
-    
+- quitting game when player is killed crashes on kickstart 1.3
+- ghosts in pen bounce too fast in high levels
 
+ABOUT ACTS:
 
-
+ The intermissions have been changed to "Acts". The first one shows how Pac-Man and Ms. Pac-Man first meet,
+ the second shows the two chasing each other around the screen,
+ and the third shows Pac-Man and Ms. Pac-Man awaiting the arrival of Junior.
+  
 CREDITS:
 
 - jotd: code and gfx/sfx conversion

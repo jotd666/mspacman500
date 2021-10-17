@@ -134,7 +134,7 @@ DIRECT_GAME_START
 
 EXTRA_LIFE_SCORE = 10000/10
 
-START_LEVEL = 1+THIRD_INTERMISSION_LEVEL
+START_LEVEL = 1
 
 ; --------------- end debug/adjustable variables
 
@@ -679,7 +679,7 @@ init_level:
     ; maze characteristics
     move.w  level_number(pc),d0
     move.w  d0,d1
-    sub.w   #14,d1
+    sub.w   #13,d1
     bmi.b   .lower_mazes
     ; mazes from level 14 and up
     btst    #2,d1
@@ -1771,20 +1771,14 @@ PLAYER_ONE_Y = 102-14
     tst.w   bonus_active
     beq.b   .no_fruit_erase
     bsr erase_bonus
-.no_fruit_erase
-    bsr erase_mspacman
-    ; redraw pen gate 3rd plane
-    ; draw pen gate
-    lea	screen_data+PEN_PLANE_OFFSET+SCREEN_PLANE_SIZE*3,a1
-    moveq.l #-1,d0
-    move.b  d0,(a1)
-    move.b  d0,(NB_BYTES_PER_LINE,a1)
-    move.b  d0,(1,a1)
-    move.b  d0,(NB_BYTES_PER_LINE+1,a1)    
+.no_fruit_erase   
 
     bsr draw_mspacman
     ; always draw lives because pacman can clear them with tunnels
 	bsr draw_lives_no_clear
+    ; restore highscore
+    bsr restore_high_score
+    
 	; now draw bonus with full cookie cut
 	; to avoid to overwrite mspacman blit
     cmp.w   #1,bonus_active
@@ -1888,13 +1882,48 @@ handle_ready_text
 .ready_off
     rts
     
+HIGHSCORE_RESTORE_ADDRESS = screen_data+2*SCREEN_PLANE_SIZE+(24+34)*NB_BYTES_PER_LINE+36
+
 ; < D2: highscore
 draw_high_score
     move.w  #232+16,d0
     move.w  #24+32,d1
     move.w  #6,d3
     move.w  #$FFF,d4    
-    bra write_color_decimal_number
+    bsr write_color_decimal_number
+    ; hack: save part of the last digits on the second plane
+    ; so it's not overwritten by mspacman on level 1 tunnel
+    ; also save the part of the "L" of "LEVEL"
+
+    lea HIGHSCORE_RESTORE_ADDRESS,a1
+    lea highscore_restore_buffer(pc),a0
+    move.w  #4,d0
+.save
+    move.w  (a1),(a0)+
+    move.w  (NB_BYTES_PER_LINE*14,a1),(a0)+
+    add.w   #NB_BYTES_PER_LINE,a1
+    dbf d0,.save
+
+    rts
+
+; repair the potential damage to highscore/level text
+; done by pacman blitted in the tunnel    
+; maybe it could have been fixed in some smarter way but that's
+; cheap enough
+restore_high_score:
+    lea HIGHSCORE_RESTORE_ADDRESS,a1
+    lea highscore_restore_buffer(pc),a0
+    move.w  #4,d0
+.rest
+    move.w  (a0)+,(a1)
+    move.w  (a0)+,(NB_BYTES_PER_LINE*14,a1)
+    add.w   #NB_BYTES_PER_LINE,a1
+    dbf d0,.rest
+
+    rts
+
+highscore_restore_buffer
+    ds.w    10
     
 write_game_over
     move.w  #72,d0
@@ -2914,6 +2943,7 @@ exc10
     rte
     
 finalize_sound
+    bsr stop_sounds
     ; assuming VBR at 0
     sub.l   a0,a0
     lea _custom,a6
@@ -2994,6 +3024,10 @@ level2_interrupt:
     
     cmp.w   #STATE_PLAYING,current_state
     bne.b   .no_playing
+    cmp.b   #$19,d0
+    bne.b   .no_pause
+    eor.b   #1,pause_flag
+.no_pause
     tst.w   cheat_keys
     beq.b   .no_playing
         
@@ -3013,28 +3047,6 @@ level2_interrupt:
     move.w  d0,_custom+color
     bra.b   .no_playing
 .no_invincible
-    cmp.b   #$52,d0
-    bne.b   .no_teleport
-    ; teleport some ghosts to tunnels entrances
-    move.l  a0,-(a7)
-    lea ghosts(pc),a0
-    ; red
-    move.w  #X_MAX-16,xpos(a0)
-    move.w  #OTHERS_YSTART_POS,ypos(a0)
-    move.w  #RIGHT,direction(a0)
-    move.w  #1,h_speed(a0)
-    clr.w   v_speed(a0)
-    ; pink
-    ;;add.l   #Ghost_SIZEOF,a0
-    ;;move.w  #0,xpos(a0)
-    ;;move.w  #OTHERS_YSTART_POS,ypos(a0)
-    ;;move.w  #RIGHT,direction(a0)
-    ;;move.w  #1,h_speed(a0)
-    ;;clr.w   v_speed(a0)
-    
-    move.l  (a7)+,a0
-    bra.b   .no_playing
-.no_teleport
     cmp.b   #$53,d0     ; F4
     bne.b   .no_debug
     ; show/hide debug info
@@ -3196,6 +3208,11 @@ level3_interrupt:
     move.w  (intreqr,a5),d0
     btst    #4,d0
     beq.b   .blitter
+    tst.b   demo_mode
+    bne.b   .no_pause
+    tst.b   pause_flag
+    bne.b   .outcop
+.no_pause
     ; copper
     bsr draw_all
     tst.b   debug_flag
@@ -3212,6 +3229,7 @@ level3_interrupt:
     moveq.w #0,d0    
 .normal
     move.w  d0,vbl_counter
+.outcop
     move.w  #$0010,(intreq,a5) 
     movem.l (a7)+,d0-a6
     rte    
@@ -3863,7 +3881,7 @@ draw_intermission_screen_level_5:
     bpl.b   .outd
 
 
-    bsr erase_mspacman_chase    
+    
 
     bsr draw_mspacman
     bsr draw_pacman
@@ -4352,8 +4370,7 @@ draw_intermission_screen_level_2:
 
     
     bsr draw_ghosts
-
-    bsr erase_mspacman    
+  
 
     bsr draw_mspacman
     bsr draw_pacman
@@ -6078,109 +6095,7 @@ level_completed:
     move.w  #STATE_LEVEL_COMPLETED,current_state
     rts
 
-
-erase_mspacman_chase
-	lea	player(pc),a4
-
-	move.w	xpos(a4),d0
-    bpl.b   .normal_erase
-    rts
-.normal_erase
 	
-    ; first roughly clear some pacman zones that can remain. We don't test the directions
-    ; just clear every possible pixel that could remain whatever the direction was/is
-    
-
-
-    ; erase is optimized. Mrs pacman uses 3 colors on 3 planes, but the blue color
-    ; is (on purpose) on the same level as the second maze plane. Since the color appears
-    ; only inside mrs pacman bob, no need to clear it, the next blit does the job
-    ; so now no need to be careful when deleting mrs pacman other planes or partially
-    ; redraw the maze or whatever: just bruteforce clear the planes
-    move.l  previous_mspacman_address(pc),a3
-    cmp.l   #0,a3
-    beq.b   .verased
-
-.no_verase
-    ; right
-    REPT    16
-    clr.w   (NB_BYTES_PER_LINE*(REPTN)+2,a3)
-    clr.l  (NB_BYTES_PER_LINE*(REPTN)-4,a3)
-    ENDR
-    
-    bsr wait_blit   ; (just in case the blitter didn't finish writing pacman)
-    REPT    16
-    clr.l  (NB_BYTES_PER_LINE*(REPTN)-4+SCREEN_PLANE_SIZE,a3)
-    clr.w  (NB_BYTES_PER_LINE*(REPTN)+SCREEN_PLANE_SIZE+2,a3)
-    ENDR  
-.verased
-    rts
-	
-erase_mspacman
-	lea	player(pc),a4
-	moveq	#0,d1
-	move.w	xpos(a4),d0
-	cmp.w	#24,d0
-	bcs.b	.minimal_erase	; don't erase up/down if around the tunnel
-	cmp.w	#X_MAX-16,d0
-	bcs.b	.normal_erase
-.minimal_erase
-	; avoids destroying the status (high-score)
-	moveq	#1,d1
-.normal_erase
-	
-    ; first roughly clear some pacman zones that can remain. We don't test the directions
-    ; just clear every possible pixel that could remain whatever the direction was/is
-    
-    bsr wait_blit   ; (just in case the blitter didn't finish writing pacman)
-
-
-    ; erase is optimized. Mrs pacman uses 3 colors on 3 planes, but the blue color
-    ; is (on purpose) on the same level as the second maze plane. Since the color appears
-    ; only inside mrs pacman bob, no need to clear it, the next blit does the job
-    ; so now no need to be careful when deleting mrs pacman other planes or partially
-    ; redraw the maze or whatever: just bruteforce clear the planes
-    move.l  previous_mspacman_address(pc),a3
-    cmp.l   #0,a3
-    beq.b   .verased
-    move.w  previous_pacman_vspeed(pc),d3
-;    beq.b   .no_verase
-;    tst.w   d3
-;    bpl.b   .erase_down
-	tst	d1
-	bne.b	.no_verase	; don't erase up/down if around the tunnel
-	
-    REPT    4
-    clr.l   (NB_BYTES_PER_LINE*(16+REPTN),a3)
-    clr.l  (NB_BYTES_PER_LINE*(16+REPTN)+SCREEN_PLANE_SIZE,a3)
-    ENDR  
-;    bra.b   .no_verase
-.erase_down
-    REPT    4
-    clr.l   (NB_BYTES_PER_LINE*(REPTN-4),a3)
-    clr.l   (NB_BYTES_PER_LINE*(REPTN-4)+SCREEN_PLANE_SIZE,a3)
-    ENDR
-;    bra.b   .verased
-.no_verase
-    move.w  previous_pacman_hspeed(pc),d3
-    beq.b   .verased
-    bpl.b   .erase_left
-    ; right
-    REPT    4
-    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+2,a3)
-    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+SCREEN_PLANE_SIZE+2,a3)
-    ENDR  
-    rts
-.erase_left
-	tst	d1
-	bne.b	.verased	; don't erase if too much on the left (trashes score)
-    REPT    4
-    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+1,a3)
-    clr.b  (NB_BYTES_PER_LINE*(4+REPTN)+SCREEN_PLANE_SIZE+1,a3)
-    ENDR  
-.verased
-    rts
-    
 draw_pacman:
     lea     robopac(pc),a2
     
@@ -6259,7 +6174,16 @@ draw_mspacman:
     move.l  (a0),a0
     bra.b   .pacblit
 
-.normal    
+.normal
+    ; first, remove first plane
+    move.l  previous_mspacman_address(pc),d5    
+    beq.b   .no_erase
+    ; erase first plane
+    move.l  d5,a1
+    REPT    18
+    clr.l   ((REPTN-1)*NB_BYTES_PER_LINE,a1)
+    ENDR
+.no_erase
     move.w  direction(a2),d0
     lea  pac_dir_table(pc),a0
     move.l  (a0,d0.w),a0
@@ -6299,22 +6223,33 @@ draw_mspacman:
 
     lea	screen_data+SCREEN_PLANE_SIZE*2,a1
     
-    lea (BOB_16X16_PLANE_SIZE*4,a0),a3    ; mask follows the 4 data bitplanes
     lea (BOB_16X16_PLANE_SIZE*2,a0),a0    ; skip first plane for bitmap
     move.l  a1,a6
     move.w d0,d3
     move.w d1,d4
 
-    bsr blit_plane
+    bsr blit_plane    
     move.l  a1,previous_mspacman_address
+    
+    ; remove previous second plane before blitting the new one
+    ; nice as it works in parallel with the first plane blit started above
+    tst.l   d5    
+    beq.b   .no_erase2
+    move.l  d5,a1
+    add.w   #SCREEN_PLANE_SIZE,a1
+    REPT    18
+    clr.l   ((REPTN-1)*NB_BYTES_PER_LINE,a1)
+    ENDR
+.no_erase2    
     
     move.w d3,d0
     move.w d4,d1
-    ; no cookie cut for the rest of the planes
+    ; no cookie cut
     lea (SCREEN_PLANE_SIZE,a6),a1
     lea (BOB_16X16_PLANE_SIZE,a0),a0    ; next plane for bitmap
-    ; no need to blit data from plane 4: mspacman colors fit into the first 3
-    ; planes, saves some bandwidth!!
+    ; no need to blit data from plane 4: mspacman colors fit into planes 2-3
+    ; planes, saves some bandwidth and some cookie-cutting
+    ; ATM only fruit bonus needs cookie-cutting
     bra blit_plane
 
     
@@ -7228,6 +7163,8 @@ maze_blink_nb_times
     dc.b    0
 nb_lives:
     dc.b    0
+pause_flag
+    dc.b    0
 dot_positions
     ds.b    6,0
 quit_flag
@@ -7745,26 +7682,26 @@ SOUNDFREQ = 22050
 SOUND_ENTRY:MACRO
 \1_sound
     dc.l    \1_raw
-    dc.w    (\1_raw_end-\1_raw)/2,FXFREQBASE/SOUNDFREQ,64
+    dc.w    (\1_raw_end-\1_raw)/2,FXFREQBASE/\3,64
     dc.b    \2
     dc.b    $01
     ENDM
     
     ; radix, ,channel (0-3)
-    SOUND_ENTRY killed,1
-    SOUND_ENTRY credit,1
-    SOUND_ENTRY extra_life,1
-    SOUND_ENTRY ghost_eaten,2
-    SOUND_ENTRY bonus_eaten,3
-    SOUND_ENTRY bounce,2
-    SOUND_ENTRY eat_1,3
-    SOUND_ENTRY eat_2,3
-    SOUND_ENTRY loop_1,0
-    SOUND_ENTRY loop_2,0
-    SOUND_ENTRY loop_3,0
-    SOUND_ENTRY loop_4,0
-    SOUND_ENTRY loop_fright,0
-    SOUND_ENTRY loop_eyes,0
+    SOUND_ENTRY killed,1,SOUNDFREQ
+    SOUND_ENTRY credit,1,SOUNDFREQ
+    SOUND_ENTRY extra_life,1,SOUNDFREQ
+    SOUND_ENTRY ghost_eaten,2,SOUNDFREQ
+    SOUND_ENTRY bonus_eaten,3,SOUNDFREQ
+    SOUND_ENTRY bounce,2,SOUNDFREQ
+    SOUND_ENTRY eat_1,3,SOUNDFREQ
+    SOUND_ENTRY eat_2,3,SOUNDFREQ
+    SOUND_ENTRY loop_1,0,SOUNDFREQ
+    SOUND_ENTRY loop_2,0,SOUNDFREQ
+    SOUND_ENTRY loop_3,0,SOUNDFREQ
+    SOUND_ENTRY loop_4,0,SOUNDFREQ
+    SOUND_ENTRY loop_fright,0,16000     ; smaller replay rate
+    SOUND_ENTRY loop_eyes,0,SOUNDFREQ
 
 
     dc.l    0

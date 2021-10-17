@@ -25,7 +25,7 @@ _expmem
     IFD CHIP_ONLY
     dc.l    0
     ELSE
-	dc.l	$C0000					; ws_expmem
+	dc.l	$80000					; ws_expmem
     ENDC
 	dc.w	_name-_base				; ws_name
 	dc.w	_copy-_base				; ws_copy
@@ -63,6 +63,7 @@ _data   dc.b    0
 _name	dc.b	'Ms Pacman',0
 _copy	dc.b	'2021 JOTD',0
 _info
+    dc.b    "Music by no9",0
 	dc.b	0
 _kickname   dc.b    0
 ;--- version id
@@ -77,11 +78,11 @@ start:
     
     IFD CHIP_ONLY
     lea  _expmem(pc),a0
-    move.l  #$180000,(a0)
+    move.l  #$100000,(a0)
     ENDC
     lea progstart(pc),a0
     move.l  _expmem(pc),(a0)
-    ;move.l  #$100000,(a0)
+
 	lea	exe(pc),a0
 	move.l  progstart(pc),a1
 	jsr	(resload_LoadFileDecrunch,a2)
