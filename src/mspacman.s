@@ -3900,6 +3900,7 @@ update_intermission_screen_level_9:
     clr.w   baby_released
     clr.w   pac_drawn
     clr.w   clapper_drawn
+    clr.w   collision_or_bounce_index
  
     move.w  #8,d0
     bsr play_music
@@ -3910,7 +3911,7 @@ update_intermission_screen_level_9:
     move.w  state_timer(pc),d0
     cmp.w   #$13C,d0         ; exact duration of the music
     beq.b   stop_sounds
-    cmp.w   #$200,d0
+    cmp.w   #$1E0,d0
     beq.b   act_end
     
     sub.w   #ORIGINAL_TICKS_PER_SEC,d0
@@ -3935,20 +3936,42 @@ update_intermission_screen_level_9:
     move.w  d0,stork_frame
     move.w  stork_x(pc),d0
     add.w   #32,d0    
-    bmi.b   .outd
+    bmi.b   .no_stork_move
     
     moveq.w #1,d1
     tst.w   baby_released
     beq.b   .slower
     add.w   d1,d1
     sub.w   d1,stork_x
+.no_stork_move    
     ; baby falling
-    cmp.w   #2,baby_released
+    move.w  baby_released(pc),d0
+    cmp.w   #3,d0
+    beq.b   .outd
+    cmp.w   #2,d0
     beq.b   .bouncing
     sub.w   #1,junior_x
     add.w   #1,junior_y
+    cmp.w   #200-Y_START-8,junior_y
+    bne.b   .outd
+    move.w  #2,baby_released        ; bouncing now
     bra.b   .outd
 .bouncing
+    move.w  collision_or_bounce_index(pc),d2
+    addq.w  #1,collision_or_bounce_index
+    btst    #0,d2
+    bne.b   .outd   ; one out of 2
+    add.w   d2,d2
+    lea junior_bounce_table(pc),a0
+    move.l  (a0,d2.w),d1
+    tst.l   d1
+    beq.b   .end_bounce
+    add.w   d1,junior_y
+    swap    d1
+    add.w   d1,junior_x
+    bra.b   .outd
+.end_bounce
+    move.w  #3,baby_released
     bra.b   .outd
 .slower
     sub.w   d1,stork_x
@@ -3998,8 +4021,8 @@ draw_intermission_screen_level_9:
     add.w   #SCREEN_PLANE_SIZE,a1
     bsr     clear_plane_any
     
-    cmp.w   #1,baby_released
-    bne.b   .no_erase
+    tst.w   baby_released
+    beq.b   .no_erase
     lea     screen_data,a1
     ; also erase baby wrap
     move.w  junior_x(pc),d0
@@ -4065,6 +4088,15 @@ draw_intermission_screen_level_9:
     ; baby wrap
     move.w  junior_x(pc),d0
     move.w  junior_y(pc),d1
+    cmp.w   #3,baby_released
+    bne.b   .noj
+    lea junior,a0
+    lea screen_data+SCREEN_PLANE_SIZE,a1
+    moveq.l #-1,d2
+    bsr blit_plane
+    bra.b   .no_stork_draw
+
+.noj
     move.w  d0,d3
     move.w  d1,d4
     lea baby_wrap,a0
@@ -4536,7 +4568,7 @@ update_intermission_screen_level_2
     bcs.b   .no_ghost_collision
     move.w  #1,ghost_collided
     ; init collision bounce x/y offset table pointer
-    clr.w   ghost_collision_index
+    clr.w   collision_or_bounce_index
     bra.b   .ongoing_collision
 .no_ghost_collision
     ; ghosts still nearing each other
@@ -4549,8 +4581,8 @@ update_intermission_screen_level_2
     cmp.w   #2,ghost_collided
     beq.b   .cont       ; collision ended
     ; ghosts are colliding/bouncing according to an offset table
-    move.w  ghost_collision_index(pc),d2
-    addq.w  #1,ghost_collision_index
+    move.w  collision_or_bounce_index(pc),d2
+    addq.w  #1,collision_or_bounce_index
     btst    #0,d2
     bne.b   .cont   ; one out of 2
     add.w   d2,d2
@@ -4700,7 +4732,7 @@ ghost_collided
     dc.w    0
 clapper_table
     dc.l    clapper_0,clapper_1,clapper_2,clapper_0
-ghost_collision_index
+collision_or_bounce_index
     dc.w    0
 ; bounce tables for ghosts in act 1
 pink_ghost_collision_table
@@ -4713,8 +4745,18 @@ cyan_ghost_collision_table
     REPT    2
     dc.w    1,-1,1,-1,1,0,1,1,0,1
     ENDR
-    dc.w    1,0,1,-1,0,1,1
+    dc.w    1,0,1,-1,0,1
     dc.l    0
+junior_bounce_table
+    dc.w    -1,-1,0,-1,-1,0,-1,-1,-1,0
+    dc.w    -1,1,-1,0,0,1,-1,1,-1,1
+    dc.w    -1,-1,0,-1,-1,0,-1,-1,-1,0
+    dc.w    -1,0,1,-1,0,-1,-1,0
+    dc.l    0
+
+
+
+    
 ; pacman/ms pacman animation are slower during the intermission/intro
 pacs_act_anim:
     eor.w   #1,animate_pacs

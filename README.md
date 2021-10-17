@@ -9,9 +9,13 @@ REQUIRES:
 
 TODO: 
 
-- problems erasing mspacman on high levels: use blitter to avoid tearing
+- problems erasing mspacman on high levels
+  => erase plane 2 (previous address on 2 bytes x 16) using blitter, draw plane 2
+     erase plane 3 with cpu, draw plane 3
 - fruit appears: yellow dot on right bottom corner/somewhere
-- intermission sequence 3
+- intermission sequence 3 end: bounce not working
+- player killed: erase fruit again/redraw maze with dots
+- test all levels to see if the layout respects the original game
 - redraw score all the time (maze 1 tunnel)
 
 FEATURES:
