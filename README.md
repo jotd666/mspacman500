@@ -10,12 +10,8 @@ REQUIRES:
 
 TODO: 
 
-
-- fruit appears: yellow dot on right bottom corner/somewhere
-- player killed: erase fruit again/redraw maze with dots
-- test all levels to see if the layout respects the original game: 1-13 OK
+- eat fruit: sometimes stuff remaining
 - demo mode
-- level 14->xxx not the same as arcade
 
 FEATURES:
 

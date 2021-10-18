@@ -134,7 +134,7 @@ DIRECT_GAME_START
 
 EXTRA_LIFE_SCORE = 10000/10
 
-START_LEVEL = 1
+START_LEVEL = 1+FOURTH_INTERMISSION_LEVEL+1
 
 ; --------------- end debug/adjustable variables
 
@@ -497,13 +497,12 @@ intro:
     
     ; do it first, as the last bonus overwrites bottom left of screen
     bsr draw_bonuses    
-    bsr draw_maze
     bsr draw_score
     
     ; for debug
     ;;bsr draw_bounds
     
-    bsr draw_dots       
+    bsr init_dots
 
     bsr hide_sprites
 
@@ -518,6 +517,8 @@ intro:
     
     bsr wait_bof
 
+    bsr draw_maze
+    bsr draw_dots       
     bsr draw_lives
     move.w  #STATE_PLAYING,current_state
     move.w #INTERRUPTS_ON_MASK,intena(a5)
@@ -679,15 +680,14 @@ init_level:
     ; maze characteristics
     move.w  level_number(pc),d0
     move.w  d0,d1
-    sub.w   #13,d1
+    sub.w   #FOURTH_INTERMISSION_LEVEL,d1
     bmi.b   .lower_mazes
     ; mazes from level 14 and up
-    btst    #2,d1
-    beq.b   .even
-    move.w  #4,d0
-    bra.b   .cont
-.even
-    move.w  #5,d0
+    lsr.w   #2,d1   ; divide by 4
+    add.w   #2,d1   ; add 2
+    and.w   #3,d1   ; modulus 4
+    addq.w  #2,d1   ; add 2 (alternate between 3,4 and 3,4 (alt colors))
+    move.w  d1,d0
     bra.b   .cont
 .lower_mazes    
     add.w   d0,d0
@@ -1198,14 +1198,12 @@ update_ghost_mode_timer
     rts
     
 init_player
-    ; in case player was killed / level completed 
-    ; when bonus was active
-    tst.w   bonus_active
-    beq.b   .no_bonus_remove
+    clr.l   bonus+xpos  ; reset bonus position to an invalid value
+    move.w  #-1,bonus_previous_y    ; no previous bonus position either
+    ; if there was a bonus running, remove it
     bsr remove_bonus
-.no_bonus_remove
     bsr remove_bonus_score
-    
+
     lea player(pc),a0
     move.l  #'MRSP',character_id(a0)
     bsr     init_any_pac
@@ -1901,6 +1899,7 @@ draw_high_score
 .save
     move.w  (a1),(a0)+
     move.w  (NB_BYTES_PER_LINE*14,a1),(a0)+
+    move.w  (NB_BYTES_PER_LINE*20,a1),(a0)+
     add.w   #NB_BYTES_PER_LINE,a1
     dbf d0,.save
 
@@ -1917,13 +1916,14 @@ restore_high_score:
 .rest
     move.w  (a0)+,(a1)
     move.w  (a0)+,(NB_BYTES_PER_LINE*14,a1)
+    move.w  (a0)+,(NB_BYTES_PER_LINE*20,a1)
     add.w   #NB_BYTES_PER_LINE,a1
     dbf d0,.rest
 
     rts
 
 highscore_restore_buffer
-    ds.w    10
+    ds.w    20
     
 write_game_over
     move.w  #72,d0
@@ -2384,6 +2384,8 @@ draw_intro_screen
 ; < D0: 0,1,2,... score index 100,200,500,700,1000,2000,5000
 ; < D1: 0: clear, != 0: draw
 draw_bonus_score:
+    move.l  bonus+xpos(pc),d4   ; get both x and y
+    beq.b   .out
     lsl.w   #6,d0       ; *64
     lea bonus_scores,a0
     add.w   d0,a0
@@ -2392,8 +2394,8 @@ draw_bonus_score:
     bne.b   .cont
     lea empty_16x16_bob,a0
 .cont
-    move.w  xpos+bonus(pc),d3
-    move.w  ypos+bonus(pc),d4
+    move.l  d4,d3
+    swap    d3
     sub.w  #8+Y_START,d4
     sub.w  #8+X_START,d3
     lea	screen_data,a1
@@ -2414,7 +2416,7 @@ draw_bonus_score:
     move.w  d4,d1
     moveq.l #-1,d2
     bsr blit_plane_cookie_cut
-    
+.out    
     rts
     
 ; what: clears a plane of any width (ATM not using blitter), 16 height
@@ -2544,17 +2546,20 @@ erase_bonus
     
     lea     empty_16x16_bob,a0
     bsr.b internal_bonus_draw
-    ; now redraw the dot
+    ; now redraw the dots around the fruit if needed
     move.w  bonus_previous_x(pc),d0
     move.w  bonus_previous_y(pc),d1
     add.w   #8,d1
     bsr     refresh_dot
     sub.w   #16,d1
+    bmi.b   .ignore1
     bsr     refresh_dot
+.ignore1
     move.w  bonus_previous_y(pc),d1
     add.w   #8,d0
     bsr     refresh_dot
     sub.w   #16,d0
+    bmi.b   .ignore
     bsr     refresh_dot
 .ignore
     rts
@@ -2754,6 +2759,7 @@ count_dots:
 .loopx
     move.b  (a0)+,d2
     beq.b   .next
+    bmi.b   .next
     cmp.b   #1,d2
     ; draw small dot
     bne.b   .big
@@ -2769,7 +2775,23 @@ count_dots:
     movem.l (a7)+,d1-d3/a0
     rts
     
+init_dots:
+    ; init dots
+    move.l dot_table_read_only(pc),a0
+    lea dot_table,a1
+    move.l  #NB_TILE_LINES*NB_TILES_PER_LINE-1,d0
+.copy
+    move.b  (a0)+,(a1)+
+    dbf d0,.copy
+    rts
+    
 draw_dots:
+    lea     powerdots(pc),a2
+    ; reset powerdots
+    clr.l   (a2)
+    clr.l   (4,a2)
+    clr.l   (8,a2)
+    clr.l   (12,a2)
     ; draw pen gate
     lea	screen_data+PEN_PLANE_OFFSET,a1
     moveq.l #-1,d0
@@ -2782,15 +2804,6 @@ draw_dots:
     move.b  d0,(NB_BYTES_PER_LINE,a1)
     move.b  d0,(1,a1)
     move.b  d0,(NB_BYTES_PER_LINE+1,a1)
-
-    ; init dots
-    lea     powerdots(pc),a2
-    move.l dot_table_read_only(pc),a0
-    lea dot_table,a1
-    move.l  #NB_TILE_LINES*NB_TILES_PER_LINE-1,d0
-.copy
-    move.b  (a0)+,(a1)+
-    dbf d0,.copy
 
     ; start with an offset (skip the fake 3 first rows)
     lea dot_table+(Y_START/8)*NB_TILES_PER_LINE,a0    
@@ -2808,6 +2821,7 @@ draw_dots:
     bsr draw_dot
     bra.b   .next
 .big
+    bmi.b   .next
     move.l  a1,(a2)+        ; store powerdot address
     bsr draw_power_pill
 
@@ -2817,6 +2831,7 @@ draw_dots:
     add.l  #NB_BYTES_PER_LINE-NB_TILES_PER_LINE,a1
     add.l   #NB_BYTES_PER_LINE*7,a1
     dbf d0,.loopy
+
     rts
 
 ; < A1 address
@@ -2863,6 +2878,7 @@ refresh_dot:
     beq.b   .out
 
     ; there is a pill there, draw it
+    LOGPC   100
     lea mul40_table(pc),a1
     sub.w   #3,d2
     lsl.w   #4,d2   ; *8*2
@@ -3380,6 +3396,12 @@ update_all
     ; as soon as either pacman or the ghosts move
     bsr update_pac
     bsr check_pac_ghosts_collisions
+    tst.w   bonus_active
+    beq.b   .nobonus2
+    ; re-check collision as sometimes pacman crosses the moving bonus
+    ; without picking it
+    bsr check_pac_bonus_collision
+.nobonus2
     bsr update_ghosts
     bra check_pac_ghosts_collisions
     
@@ -3499,8 +3521,10 @@ check_pac_bonus_collision
 .nomatch
     rts
     
-.collision    
+.collision
+    ; no more bonus
     bsr remove_bonus
+
     lea bonus_eaten_sound(pc),a0
     bsr play_fx
     ; show score
@@ -5574,10 +5598,10 @@ update_pac
     bne.b   .no_sound
     lea killed_sound(pc),a0
     bsr play_fx
-    
+    bra.b   .frame_done
 .no_sound
     bcs.b   .frame_done     ; frame 0
-    bsr.b   stop_background_loop    
+    bsr.b   stop_background_loop
     ; d5 is the timer starting from 0
     lea player_kill_anim_table(pc),a0
     move.b  (a0,d5.w),d0

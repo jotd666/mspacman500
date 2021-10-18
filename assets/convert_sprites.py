@@ -14,7 +14,7 @@ def process_mazes():
             fw.write("\tdc.l\tmaze_{0}_dot_table_read_only,maze_{0}_wall_table,maze_{0}_misc,maze_{0}_bitmap\n".format(i+1))
         # extra mazes reuse bitmaps from mazes 3 & 4 with different colors
         fw.write("\tdc.l\tmaze_{0}_dot_table_read_only,maze_{0}_wall_table,maze_5_misc,maze_{0}_bitmap\n".format(3))
-        fw.write("\tdc.l\tmaze_{0}_dot_table_read_only,maze_{0}_wall_table,maze_1_misc,maze_{0}_bitmap\n".format(4))
+        fw.write("\tdc.l\tmaze_{0}_dot_table_read_only,maze_{0}_wall_table,maze_6_misc,maze_{0}_bitmap\n".format(4))
 
         fw.write("\n")
 
@@ -130,7 +130,13 @@ def process_mazes():
         fw.write("\tdc.w\t${:x}  ; dots\n".format(0xFF))    # cyan
         fw.write("\tdc.w\t${:x}  ; outline\n".format(0xFF0))  # yellow
         fw.write("\tdc.w\t${:x}  ; fill\n\n".format(0xFBF))
-        fw.write("\tdc.w\t${}  ; total nb dots\n\n".format(nb_dots[2]))
+        fw.write("\tdc.w\t{}  ; total nb dots\n\n".format(nb_dots[2]))
+        # extra colors
+        fw.write("\nmaze_6_misc:\n")
+        fw.write("\tdc.w\t${:x}  ; dots\n".format(0xddf))    # cyan
+        fw.write("\tdc.w\t${:x}  ; outline\n".format(0xf00))  # yellow
+        fw.write("\tdc.w\t${:x}  ; fill\n\n".format(0xfba))
+        fw.write("\tdc.w\t{}  ; total nb dots\n\n".format(nb_dots[3]))
 
         # pixel 1,5 holds the fill color of the maze wall
         #maze_img.save("dumps/maze_{}.png".format(i))
