@@ -123,7 +123,7 @@ FOURTH_INTERMISSION_LEVEL = 13
 ;;INTERMISSION_TEST = THIRD_INTERMISSION_LEVEL
 
 ; if set skips intro and start music, game starts almost immediately
-DIRECT_GAME_START
+;DIRECT_GAME_START
 
 ; temp if nonzero, then records game input, intro music doesn't play
 ; and when one life is lost, blitzes and a0 points to move record table
@@ -134,7 +134,7 @@ DIRECT_GAME_START
 
 EXTRA_LIFE_SCORE = 10000/10
 
-START_LEVEL = 1+FOURTH_INTERMISSION_LEVEL+1
+START_LEVEL = 1
 
 ; --------------- end debug/adjustable variables
 
@@ -1213,7 +1213,7 @@ init_player
     bne.b   .played
     st.b    music_played
     moveq.l #0,d0
-    move.w  #264,d1     ; seems okay, matches intro music length
+    move.w  #258,d1     ; seems okay, matches intro music length
     move.w  d1,d0
     move.w  d0,first_ready_timer
     lsr.w   #1,d1
@@ -3702,6 +3702,8 @@ update_intro_screen
     subq.w  #1,xpos(a4)
 .nomspac
     move.w  state_timer(pc),d0
+    cmp.w   #$4E0,d0
+    beq.b   .demo
     ; text handling
     cmp.w   #58,d0
     bne.b   .no_with
@@ -3715,176 +3717,20 @@ update_intro_screen
 .no_blinky    
 .out_text
     rts
+.demo
+    ; change state
+    clr.w   state_timer
+    move.w  #STATE_GAME_START_SCREEN,current_state
+    ; in demo mode
+    st.b    demo_mode
+    rts
+    
 .ghost_to_update
     dc.w    0
 .y_target
     dc.w    0
 .anim_ms_pac
     dc.w    0
-.remaining_ghosts
-    cmp.w   #DEMO_PACMAN_TIMER,state_timer
-    bne.b   .no_pac_demo_anim_init
-    clr.w   .skip_3_frames
-    lea player(pc),a2
-    clr.w   move_period
-    move.w  #X_MAX,xpos(a2)
-    move.w  #Y_PAC_ANIM+28,ypos(a2)
-    lea ghosts(pc),a3
-    moveq   #3,d0
-    moveq.w #0,d1
-.ginit
-    move.w  #X_MAX+24,xpos(a3)
-    add.w   d1,xpos(a3)
-    add.w   #16,d1
-    move.w  ypos(a2),ypos(a3)
-    move.w  #LEFT,direction(a3)
-    move.w  #-1,h_speed(a3)
-    add.l   #Ghost_SIZEOF,a3
-    dbf d0,.ginit
-.no_pac_demo_anim_init
-    cmp.w   #DEMO_PACMAN_TIMER,state_timer
-    bcs.b   .no_pac_demo_anim
-    
-    bsr update_power_pill_flashing
-    move.w  ghost_eaten_timer(pc),d6
-    bmi.b   .update_pac_and_ghosts
-    subq.w  #1,d6
-    move.w  d6,ghost_eaten_timer
-    bra.b   .no_pac_demo_anim
-    
-.update_pac_and_ghosts    
-    lea     player(pc),a4
-    lea     ghosts(pc),a3
-    move.w  h_speed(a4),d0      ; speed
-    move.w  h_speed(a3),d1      ; speed
-    add.w   #1,move_period
-
-    move.w  move_period(pc),d5
-    cmp.w   #-1,h_speed(a3)
-    beq.b   .ghost_attack
-    move.w  d5,d6
-    and.w   #1,d6
-    bne.b   .ghost_attack
-    clr.w   d1  ; slower ghosts
-.ghost_attack
-    
-    cmp.w   #16,d5
-    bne.b   .no_move_reset
-    clr.w   move_period
-    cmp.w   #-1,h_speed(a3)
-    bne.b   .ghosts_slow
-    ; pacman doesn't move this time
-    clr.w   d0
-    bra.b   .no_move_reset
-.ghosts_slow
-    ; ghosts don't move
-    ; pacman moves 1 more
-    addq.w  #1,d0
-    clr.w   d1
-.no_move_reset
-    tst.w   d0
-    beq.b   .no_pac_anim
-    bsr animate_mspacman
-    
-.no_pac_anim
-    tst.w   d1
-    beq.b   .no_ghost_anim
-    moveq.w #3,d7
-.ganim
-    ; update ghost animations but don't move
-    ; apply speed on ghosts
-    add.w   d1,(xpos,a3)
-    move.w  frame(a3),d2
-    addq.w  #1,d2
-    and.w   #$F,d2
-    move.w  d2,frame(a3)
-    add.w   #Ghost_SIZEOF,a3
-    dbf d7,.ganim
-.no_ghost_anim
-    ; check if pacman is stopped
-    tst.w   .skip_3_frames
-    beq.b   .okmove
-    subq.w  #1,.skip_3_frames
-    moveq   #0,d0
-.okmove
-    move.w  (xpos,a4),d2
-    add.w   d0,d2 ; pac
-    cmp.w   #LEFT,direction(a4)
-    bne.b   .pacman_chasing
-
-    lea ghosts(pc),a3
-    cmp.w   #1,h_speed(a3)
-    beq.b   .storex ; powerpill taken already
-    cmp.w   #X_DEMO_POWER_PILL+8,d2
-    bne.b   .storex
-    ; eat dot, don't turn around immediately
-    move.w  #3,.skip_3_frames
-    lea  powerdots(pc),a0
-    tst.l   (a0)
-    beq.b   .noclr
-    move.l  (a0),a1
-    clr.l   (a0)
-    bsr clear_power_pill
-.noclr
-    
-    lea ghosts(pc),a3
-    move.w  #3,d7
-.floop
-    move.l  color_register(a3),a1
-    lea     frightened_ghosts_blue_palette(pc),a2
-    ; directly change color registers for that sprite
-    move.l  (a2)+,(a1)+
-    move.l  (a2)+,(a1)+
-    move.w  #MODE_FRIGHT,mode(a3)
-    move.w  #1,h_speed(a3)
-    add.l   #Ghost_SIZEOF,a3
-    dbf d7,.floop
-  
-    lea ghosts(pc),a3
-    move.w  #RIGHT,d3
-    move.w  d3,(direction,a3)
-    move.w  d3,(direction+Ghost_SIZEOF,a3)
-    move.w  d3,(direction+Ghost_SIZEOF*2,a3)
-    move.w  d3,(direction+Ghost_SIZEOF*3,a3)
-    
-    bra.b   .storex
-.pacman_chasing
-    ; check collisions
-    move.w  d2,d3
-    lsr.w   #3,d3
-    moveq.w #3,d7
-    
-.cloop
-    cmp.w   #MODE_EYES,mode(a3)
-    beq.b   .no_eat
-
-    move.w  xpos(a3),d4
-    lsr.w   #3,d4
-    cmp.w   d4,d3
-    bne.b   .no_eat
-    move.w  #X_MAX*2,xpos(a3)   ; hidden
-    exg a3,a4       ; routine expects ghost structure in a4, not a3
-    bsr a_ghost_was_eaten
-    exg a3,a4
-    move.w  state_timer,last_ghost_eaten_state_timer
-    bra.b   .storex
-.no_eat
-    add.w   #Ghost_SIZEOF,a3
-    dbf d7,.cloop
-.storex
-    cmp.w   #X_DEMO_POWER_PILL+4,d2
-    bcc.b  .storex2
-    ; turn around now
-    move.w  #1,h_speed(a4)
-    move.w  #RIGHT,direction(a4)
-    
-.storex2
-    move.w  d2,(xpos,a4)
-.no_pac_demo_anim
-    rts
-.skip_3_frames
-    dc.w    0
-
 
     
 ; sorry for the very bad coding on non-interactive sequences
@@ -5533,8 +5379,12 @@ resume_sound_loop:
     bra start_background_loop
     
 play_loop_fx
+    tst.b   demo_mode
+    bne.b   .nosfx
     lea _custom,a6
     bra _mt_loopfx
+.nosfx
+    rts
     
 ; what: sets game state when a power pill has been taken
 ; trashes: A0,A1,D0,D1
@@ -7681,20 +7531,22 @@ update_extra_life_sound_loop:
     rts
 
 start_background_loop
-    lea _custom,a6
     move.w  loop_index(pc),d0
     add.w   d0,d0
     add.w   d0,d0
     lea     loop_table(pc),a0
     move.l  (a0,d0.w),a0    ; current loop sound
-    bra _mt_loopfx
+    bra play_loop_fx
 
 
 stop_background_loop:
+    tst.b   demo_mode
+    bne.b   .out
     lea _custom,a6
     clr.w   d0
     bra _mt_stopfx
-    
+.out
+    rts
     
     
        

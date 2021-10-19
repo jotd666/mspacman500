@@ -1,3 +1,5 @@
+MsPacman 500
+
 This is a (successful) attempt by jotd to create a 1:1 port of the famous arcade game on Amiga 500 using 100% 68k assembly.
 
 The display is 4:3 so scores, lives, bonuses are on the side rather than on top/botton. The gameplay layout is 1:1 vs
@@ -7,11 +9,6 @@ REQUIRES:
 
 - Kickstart 1.3, 512k memory or
 - Kickstart 2.0, 1MB memory
-
-TODO: 
-
-- eat fruit: sometimes stuff remaining
-- demo mode
 
 FEATURES:
 
@@ -23,9 +20,15 @@ FEATURES:
 - joystick controlled (port 1)
 - can run directly from shell or from whdload (fast machines/complex configurations)
 
+ISSUES: 
+
+- eat fruit: sometimes stuff remaining
+- ms pac sometimes pixels remaining (when eating ghosts?)
+- redo demo mode
+
 MINOR ISSUES:
 
-- quitting game when player is killed crashes on kickstart 1.3
+- quitting game when player is killed crashes on kickstart 1.3 (test with whdload kick1.3)
 - ghosts in pen bounce too fast in high levels
 
 ABOUT ACTS:
