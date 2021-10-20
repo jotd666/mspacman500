@@ -20,16 +20,13 @@ FEATURES:
 - joystick controlled (port 1)
 - can run directly from shell or from whdload (fast machines/complex configurations)
 
-ISSUES: 
-
-- eat fruit: sometimes stuff remaining
-- ms pac sometimes pixels remaining (when eating ghosts?)
-- redo demo mode
-
 MINOR ISSUES:
 
 - quitting game when player is killed crashes on kickstart 1.3 (test with whdload kick1.3)
 - ghosts in pen bounce too fast in high levels
+- redo demo mode
+- add keyboard control
+- add second button pause
 
 ABOUT ACTS:
 
@@ -42,6 +39,7 @@ CREDITS:
 - jotd: code and gfx/sfx conversion
 - no9: music conversion to protracker
 - phx: sfx/module player
+- mrv2k: icon
 - meynaf: random routine
 - eab forum: useful advice & support
 - Rob Northen: unpacker (http://aminet.net/util/pack/RNC_ProPack.lha)

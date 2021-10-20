@@ -111,7 +111,7 @@ def process_mazes():
 
             def torgb4(t):
                 return ((t[0]&0xF0)<<4)+((t[1]&0xF0))+(t[2]>>4)
-            fw.write("\nmaze_{}_misc:\n".format(i))
+            fw.write("\n\teven\nmaze_{}_misc:\n".format(i))
             fw.write("\tdc.w\t${:x}  ; dots\n".format(torgb4(dot_color)))
             fw.write("\tdc.w\t${:x}  ; outline\n".format(torgb4(outline_color)))
             fw.write("\tdc.w\t${:x}  ; fill\n".format(torgb4(fill_color)))

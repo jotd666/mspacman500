@@ -2562,6 +2562,7 @@ erase_bonus
     bmi.b   .ignore
     bsr     refresh_dot
 .ignore
+
     rts
         
 draw_bonus_in_maze
@@ -2570,7 +2571,15 @@ draw_bonus_in_maze
     move.w  ypos(a0),d1
     move.w speed_table_index(a0),d2
     lea fruit_bounce_table(pc),a1
-    add.w  (a1,d2.w),d1
+    move.w  (a1,d2.w),d5
+    ; store previous value from draw
+    ; not from update, as sometimes update is called
+    ; but draw is not (damn 60Hz emulation in PAL!!)
+    move.w  d5,previous_y_bounce
+    add.w  d5,d1
+    ; store previous value from draw
+    ; not from update
+    move.l  bonus+xpos,bonus_previous_x   ; optim save both x & y
 
     move.l  bonus_sprite(pc),a0
     
@@ -3396,8 +3405,8 @@ update_all
     ; as soon as either pacman or the ghosts move
     bsr update_pac
     bsr check_pac_ghosts_collisions
-    tst.w   bonus_active
-    beq.b   .nobonus2
+    cmp.w   #1,bonus_active
+    bne.b   .nobonus2
     ; re-check collision as sometimes pacman crosses the moving bonus
     ; without picking it
     bsr check_pac_bonus_collision
@@ -3410,6 +3419,8 @@ update_bonus
     beq.b   .doit
     rts
 .doit
+    cmp.w   #3,bonus_active
+    beq.b   .dec
     cmp.w   #2,bonus_active
     bne.b   .active
     ; 2 was set on previous update so the clear routine could work a last time
@@ -3418,13 +3429,18 @@ update_bonus
     ; y (and probably x too) cannot be negative, ever
     move.l  #-1,bonus_previous_x    ; x&y negative
     rts
+.dec
+    ; leave another update so draw routine has the time
+    ; to clear the bonus
+    move.w  #2,bonus_active
+    rts
+    
 .active
     lea bonus(pc),a0    
 
     move.w speed_table_index(a0),d0
     lea fruit_bounce_table(pc),a1
-    move.w  (a1,d0.w),previous_y_bounce
-    
+        
     add.b   #2,d0
     cmp.b   #end_fruit_bounce_table-fruit_bounce_table,d0
     bne.b   .nomaxbounce
@@ -3436,7 +3452,7 @@ update_bonus
     move.w  d0,speed_table_index(a0)
     
     move.l  xpos(a0),d0
-    move.l  d0,bonus_previous_x   ; optim save both x & y
+    
     ; move according to target tile
     move.w  target_xtile(a0),d2
     move.w  target_ytile(a0),d3
@@ -3480,14 +3496,14 @@ update_bonus
     bsr fruit_next_exit
     tst.l   d0
     bne.b   .cont
-    move.w   #2,bonus_active
+    move.w   #3,bonus_active
     rts
 .cont    
     bra check_pac_bonus_collision
     
         
 remove_bonus:
-    move.w   #2,bonus_active
+    move.w   #3,bonus_active
     rts
 remove_bonus_score
     move.w  #MSG_HIDE,bonus_score_display_message      ; tell draw routine to clear
@@ -6034,6 +6050,7 @@ draw_pacman:
     rts
     
 draw_mspacman:
+    move.l  previous_mspacman_address(pc),d5    
     lea     player(pc),a2
     tst.w  ghost_eaten_timer
     bmi.b   .normal_pacdraw
@@ -6318,7 +6335,8 @@ blit_plane_any:
 ; < D2: width in bytes (inc. 2 extra for shifting)
 ; < D3: height
 ; blit mask set
-; trashes D0-D5, a1
+; trashes D0-D5
+; > A1: even address where blit was done
 blit_plane_any_internal:
     ; pre-compute the maximum of shit here
     move.w  d3,d4
@@ -6344,6 +6362,9 @@ blit_plane_any_internal:
     lsl.l   #4,d3
     or.l    d3,d5            ; add shift
 .d0_zero    
+    ; make offset even. Blitter will ignore odd address
+    ; but a 68000 CPU doesn't and since we RETURN A1...
+    bclr    #0,d1
     add.l   d1,a1       ; plane position
 
 	move.w #NB_BYTES_PER_LINE,d0
@@ -6417,7 +6438,10 @@ blit_plane_any_internal_cookie_cut:
     move.w  d0,d3
     add.w   d0,d1
     
-.d0_zero    
+.d0_zero
+    ; make offset even. Blitter will ignore odd address
+    ; but a 68000 CPU doesn't and since we RETURN A1...
+    bclr    #0,d1
     add.l   d1,a1       ; plane position
 
     ; a4 is a multiplication table
@@ -7568,7 +7592,7 @@ SOUND_ENTRY:MACRO
     SOUND_ENTRY credit,1,SOUNDFREQ
     SOUND_ENTRY extra_life,1,SOUNDFREQ
     SOUND_ENTRY ghost_eaten,2,SOUNDFREQ
-    SOUND_ENTRY bonus_eaten,3,SOUNDFREQ
+    SOUND_ENTRY bonus_eaten,2,SOUNDFREQ
     SOUND_ENTRY bounce,2,SOUNDFREQ
     SOUND_ENTRY eat_1,3,SOUNDFREQ
     SOUND_ENTRY eat_2,3,SOUNDFREQ
