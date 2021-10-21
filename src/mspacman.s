@@ -1849,6 +1849,7 @@ PLAYER_ONE_Y = 102-14
 
 stop_sounds
     lea _custom,a6
+    clr.b   music_playing
     bra _mt_end
 
 
@@ -3049,7 +3050,11 @@ level2_interrupt:
     
     cmp.w   #STATE_PLAYING,current_state
     bne.b   .no_playing
+    tst.b   demo_mode
+    bne.b   .no_pause
     cmp.b   #$19,d0
+    bne.b   .no_pause
+    tst.b   music_playing
     bne.b   .no_pause
     eor.b   #1,pause_flag
 .no_pause
@@ -5519,6 +5524,7 @@ update_pac
     move.w  #STATE_GAME_START_SCREEN,current_state
     rts
 .no_demo_end
+    clr.l   d0
     ; demo running
     ; read next timestamp
     move.l  record_data_pointer(pc),a0
@@ -5722,7 +5728,9 @@ update_pac
     cmp.b   #64,d4
     beq.b   .show_fruit
     cmp.b   #176,d4
-    beq.b   .show_fruit
+    bne.b   .skip_fruit_test
+.show_fruit
+	bra activate_bonus
 .skip_fruit_test
     
     ; empric/random limits to change loop freq
@@ -5757,9 +5765,6 @@ update_pac
 .end_pac
     rts
 
-.show_fruit
-	bsr activate_bonus
-    bra.b   .other
     
 .vtest
     ; vertical move
@@ -6067,7 +6072,7 @@ draw_mspacman:
 
 .normal
     ; first, remove first plane
-    move.l  previous_mspacman_address(pc),d5    
+    tst.l   d5    
     beq.b   .no_erase
     ; erase first plane
     move.l  d5,a1
@@ -6362,10 +6367,7 @@ blit_plane_any_internal:
     lsl.l   #4,d3
     or.l    d3,d5            ; add shift
 .d0_zero    
-    ; make offset even. Blitter will ignore odd address
-    ; but a 68000 CPU doesn't and since we RETURN A1...
-    bclr    #0,d1
-    add.l   d1,a1       ; plane position
+    add.l   d1,a1       ; plane position (always even)
 
 	move.w #NB_BYTES_PER_LINE,d0
     sub.w   d2,d0       ; blit width
@@ -7061,6 +7063,8 @@ maze_blink_nb_times
     dc.b    0
 nb_lives:
     dc.b    0
+music_playing:    
+    dc.b    0
 pause_flag
     dc.b    0
 dot_positions
@@ -7521,6 +7525,7 @@ play_music
     lea mt_data,a4
     move.l  a0,mt_MasterVolTab(a4)
     bsr _mt_start
+    st.b    music_playing
     movem.l (a7)+,d0-a6
     rts
     

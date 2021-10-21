@@ -27,6 +27,8 @@ MINOR ISSUES:
 - redo demo mode
 - add keyboard control
 - add second button pause
+- graphical glitches on some configs, specially when fruit appears (not reproduced)
+- REDO interface of internal blitter functions: don't set mask before waitblit!
 
 ABOUT ACTS:
 
