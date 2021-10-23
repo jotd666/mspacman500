@@ -96,8 +96,6 @@ start:
     lea  _custom,a1
     move.w  #$1200,bplcon0(a1)
     move.w  #$0024,bplcon2(a1)
-    move.w  #$0C40,bplcon3(a1)
-    move.w  #$0011,bplcon4(a1)
     
 
     rts

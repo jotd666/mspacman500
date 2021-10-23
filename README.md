@@ -28,7 +28,8 @@ MINOR ISSUES:
 - add keyboard control
 - add second button pause
 - graphical glitches on some configs, specially when fruit appears (not reproduced)
-- REDO interface of internal blitter functions: don't set mask before waitblit!
+- REDO interface of internal blitter functions: don't set mask before waitblit! all blits WRONG!!!
+- death animation: one frame out of bounds => access fault
 
 ABOUT ACTS:
 

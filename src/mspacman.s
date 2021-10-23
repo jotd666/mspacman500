@@ -2074,19 +2074,19 @@ write_midway_stuff
     move.w  #48,d0
     move.w #200,d1
 
-    lea $DFF000,A5
-	move.l #-1,bltafwm(a5)	;no masking of first/last word    
+    lea _custom,A5
     lea     screen_data,a1
-    moveq.l #3,d6
+    moveq.l #3,d7
 .loop
     movem.l d0-d1/a1,-(a7)
     move.w  #6,d2       ; 16 pixels + 2 shift bytes
-    move.w  #32,d3      ; height
+    moveq.l #-1,d3
+    move.w  #32,d4      ; height
     bsr blit_plane_any_internal
     movem.l (a7)+,d0-d1/a1
     add.l   #SCREEN_PLANE_SIZE,a1
     add.l   #192,a0      ; 32 but shifting!
-    dbf d6,.loop
+    dbf d7,.loop
    
     
     lea .midway2_string(pc),a0
@@ -5476,9 +5476,10 @@ update_pac
     ; d5 is the timer starting from 0
     lea player_kill_anim_table(pc),a0
     move.b  (a0,d5.w),d0
-.frame_done
+
     lsl.w   #2,d0   ; times 4
     move.w  d0,death_frame_offset
+.frame_done    
     rts
 .alive
     tst.w   fright_timer
@@ -6279,13 +6280,13 @@ collides_with_maze:
 ; returns: A1 as start of destination (A1 = orig A1+40*D1+D0/8)
 
 blit_plane
-    movem.l d2-d5/a2-a5,-(a7)
+    movem.l d2-d6/a2-a5,-(a7)
     lea $DFF000,A5
-	move.l d2,bltafwm(a5)	;no masking of first/last word    
+	move.l d2,d3
     move.w  #4,d2       ; 16 pixels + 2 shift bytes
-    move.w  #16,d3      ; 16 pixels height
+    move.w  #16,d4      ; 16 pixels height
     bsr blit_plane_any_internal
-    movem.l (a7)+,d2-d5/a2-a5
+    movem.l (a7)+,d2-d6/a2-a5
     rts
     
 ; what: blits 16x16 data on one plane, cookie cut
@@ -6303,9 +6304,9 @@ blit_plane
 blit_plane_cookie_cut
     movem.l d2-d7/a2-a5,-(a7)
     lea $DFF000,A5
-	move.l d2,bltafwm(a5)	;masking of first/last word    
+	move.l d2,d3	;masking of first/last word    
     move.w  #4,d2       ; 16 pixels + 2 shift bytes
-    move.w  #16,d3      ; 16 pixels height   
+    move.w  #16,d4      ; 16 pixels height   
     bsr blit_plane_any_internal_cookie_cut
     movem.l (a7)+,d2-d7/a2-a5
     rts
@@ -6326,25 +6327,24 @@ blit_plane_cookie_cut
 ; skips the XY offset computation
 
 blit_plane_any:
-    movem.l d2-d5/a2-a5,-(a7)
+    movem.l d2-d6/a2-a5,-(a7)
     lea $DFF000,A5
-	move.l d3,bltafwm(a5)	;no masking of first/last word
-    move.w  d4,d3   ; height
     bsr blit_plane_any_internal
-    movem.l (a7)+,d2-d5/a2-a5
+    movem.l (a7)+,d2-d6/a2-a5
     rts
 
 ; < A5: custom
 ; < D0,D1: x,y
 ; < A0: source
+; < A1: plane pointer
 ; < D2: width in bytes (inc. 2 extra for shifting)
-; < D3: height
+; < D3: blit mask
+; < D4: blit height
 ; blit mask set
-; trashes D0-D5
+; trashes D0-D6
 ; > A1: even address where blit was done
 blit_plane_any_internal:
     ; pre-compute the maximum of shit here
-    move.w  d3,d4
     lea mul40_table(pc),a2
     add.w   d1,d1
     beq.b   .d1_zero    ; optim
@@ -6354,18 +6354,18 @@ blit_plane_any_internal:
     swap    d1
 .d1_zero
     move.l  #$09f00000,d5    ;A->D copy, ascending mode
-    move    d0,d3
+    move    d0,d6
     beq.b   .d0_zero
-    and.w   #$F,D3
+    and.w   #$F,d6
     and.w   #$1F0,d0
     lsr.w   #3,d0
     add.w   d0,d1
 
-    swap    d3
-    clr.w   d3
-    lsl.l   #8,d3
-    lsl.l   #4,d3
-    or.l    d3,d5            ; add shift
+    swap    d6
+    clr.w   d6
+    lsl.l   #8,d6
+    lsl.l   #4,d6
+    or.l    d6,d5            ; add shift
 .d0_zero    
     add.l   d1,a1       ; plane position (always even)
 
@@ -6376,14 +6376,14 @@ blit_plane_any_internal:
     lsr.w   #1,d2
     add.w   d2,d4       ; blit height
 
-    ; always the same settings (ATM)
-	move.w #0,bltamod(a5)		;A modulo=bytes to skip between lines
-	move.l d5,bltcon0(a5)	
 
     ; now just wait for blitter ready to write all registers
 	bsr	wait_blit
     
     ; blitter registers set
+    move.l  d3,bltafwm(a5)
+	move.l d5,bltcon0(a5)	
+	clr.w bltamod(a5)		;A modulo=bytes to skip between lines
     move.w  d0,bltdmod(a5)	;D modulo
 	move.l a0,bltapt(a5)	;source graphic top left corner
 	move.l a1,bltdpt(a5)	;destination top left corner
@@ -6404,14 +6404,16 @@ blit_plane_any_internal:
 ; < A3: source mask for cookie cut
 ; < A4: multiplication table for background (x28 for maze, x40 for screen)
 ; < D2: width in bytes (inc. 2 extra for shifting)
-; < D3: height
+; < D3: blit mask
+; < D4: height
 ; blit mask set
 ; returns: start of destination in A1 (computed from old A1+X,Y)
 ; trashes: nothing
 
 blit_plane_any_internal_cookie_cut:
-    movem.l d0-d6,-(a7)
+    movem.l d0-d7,-(a7)
     ; pre-compute the maximum of shit here
+    move.w  d4,d7
     move.w  d3,d4
     lea mul40_table(pc),a4
     add.w   d1,d1
@@ -6461,29 +6463,32 @@ blit_plane_any_internal_cookie_cut:
 
     sub.w   d2,d0       ; blit width
 
-    lsl.w   #6,d4
+    lsl.w   #6,d7
     lsr.w   #1,d2
-    add.w   d2,d4       ; blit height
+    add.w   d2,d7       ; blit height
 
     ; always the same settings (ATM)
-	move.w #0,bltamod(a5)		;A modulo=bytes to skip between lines
-	move.w #0,bltbmod(a5)		;A modulo=bytes to skip between lines
-	move.l d5,bltcon0(a5)	; sets con0 and con1
-
-    move.w  d0,bltcmod(a5)	;C modulo (maze width != screen width but we made it match)
-    move.w  d0,bltdmod(a5)	;D modulo
 
     ; now just wait for blitter ready to write all registers
 	bsr	wait_blit
     
     ; blitter registers set
+
+    move.w  d4,bltafwm(a5)
+	clr.w bltamod(a5)		;A modulo=bytes to skip between lines
+	clr.w bltbmod(a5)		;A modulo=bytes to skip between lines
+	move.l d5,bltcon0(a5)	; sets con0 and con1
+
+    move.w  d0,bltcmod(a5)	;C modulo (maze width != screen width but we made it match)
+    move.w  d0,bltdmod(a5)	;D modulo
+
 	move.l a3,bltapt(a5)	;source graphic top left corner (mask)
 	move.l a0,bltbpt(a5)	;source graphic top left corner
 	move.l a2,bltcpt(a5)	;pristine background
 	move.l a1,bltdpt(a5)	;destination top left corner
-	move.w  d4,bltsize(a5)	;rectangle size, starts blit
+	move.w  d7,bltsize(a5)	;rectangle size, starts blit
     
-    movem.l (a7)+,d0-d6
+    movem.l (a7)+,d0-d7
     rts
 
 
@@ -6498,18 +6503,18 @@ blit_plane_any_internal_cookie_cut:
 blit_4_planes
     movem.l d2-d6/a0-a1/a5,-(a7)
     lea $DFF000,A5
-	move.l #-1,bltafwm(a5)	;no masking of first/last word    
     lea     screen_data,a1
-    moveq.l #3,d6
+    moveq.l #3,d7
 .loop
     movem.l d0-d1/a1,-(a7)
     move.w  #4,d2       ; 16 pixels + 2 shift bytes
-    move.w  #16,d3      ; height
+    moveq.l #-1,d3  ; mask
+    move.w  #16,d4      ; height
     bsr blit_plane_any_internal
     movem.l (a7)+,d0-d1/a1
     add.l   #SCREEN_PLANE_SIZE,a1
     add.l   #64,a0      ; 32 but shifting!
-    dbf d6,.loop
+    dbf d7,.loop
     movem.l (a7)+,d2-d6/a0-a1/a5
     rts
     
