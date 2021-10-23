@@ -432,6 +432,7 @@ intro:
     bsr play_fx
 
 .game_start_loop
+    bsr random      ; so the ghosts aren't going to do the same things at first game
     move.l  joystick_state(pc),d0
     tst.b   quit_flag
     bne.b   .out
@@ -1198,6 +1199,7 @@ update_ghost_mode_timer
     rts
     
 init_player
+    clr.w   death_frame_offset
     clr.l   bonus+xpos  ; reset bonus position to an invalid value
     move.w  #-1,bonus_previous_y    ; no previous bonus position either
     ; if there was a bonus running, remove it
@@ -1232,13 +1234,13 @@ init_player
     IFD    RECORD_INPUT_TABLE_SIZE
     move.l  #record_input_table,record_data_pointer ; start of table
     clr.l   previous_joystick_state
+    clr.l   previous_random
     ENDC
 
     clr.w   record_input_clock                      ; start of time
     
     
     move.w  d0,ready_timer
-    clr.l   previous_random
     move.w  #-1,player_killed_timer
     move.w  #-1,ghost_eaten_timer
     clr.w   next_ghost_score
@@ -1515,9 +1517,8 @@ draw_ghosts:
     move.w  player_killed_timer(pc),d6
     bmi.b   draw_ghosts_normal
     cmp.w   #PLAYER_KILL_TIMER-NB_TICKS_PER_SEC,d6
-    bcc.b   draw_ghosts_normal
+    bcs.b   hide_sprites
     ; clear the ghosts sprites after 1 second when pacman is killed
-    bra.b hide_sprites
 draw_ghosts_normal
     lea ghosts(pc),a0
     moveq.l #3,d7
@@ -2595,7 +2596,6 @@ internal_bonus_draw
     sub.w  #8+X_START,d0
     bpl.b   .no_left
     ; d0 is negative
-    ;;moveq   #1,d5   ; flag partial draw   
     neg.w   d0
     lsr.l   d0,d2
     neg.w   d0
@@ -2607,7 +2607,6 @@ internal_bonus_draw
     move.w  d0,d4    
     sub.w   #X_MAX-24-X_START,d4
     bmi.b   .pdraw
-    ;;moveq   #1,d5   ; flag partial draw
     lsl.l   d4,d2
     swap    d2
     clr.w   d2
@@ -2616,27 +2615,17 @@ internal_bonus_draw
     move.w  d1,d4       ; save
     
     lea screen_data,a1
-    tst d5
-    beq.b   .cookie1
-    bsr blit_plane
-    bra.b   .skip_cookie1
-.cookie1
     move.l  a1,a2
     bsr blit_plane_cookie_cut
-.skip_cookie1
+
     
     move.w  d3,d0
     move.w  d4,d1
     lea screen_data+SCREEN_PLANE_SIZE,a1
     lea  (BOB_16X16_PLANE_SIZE,a0),a0
-    tst d5
-    beq.b   .cookie2
-    bsr blit_plane
-    bra.b   .skip_cookie2
-.cookie2
     move.l  a1,a2
     bsr blit_plane_cookie_cut
-.skip_cookie2
+
   
     ; we have to cookie-cut the draw just in case mspacman is around
     move.w  d3,d0
@@ -6413,8 +6402,6 @@ blit_plane_any_internal:
 blit_plane_any_internal_cookie_cut:
     movem.l d0-d7,-(a7)
     ; pre-compute the maximum of shit here
-    move.w  d4,d7
-    move.w  d3,d4
     lea mul40_table(pc),a4
     add.w   d1,d1
     move.w  d1,d6   ; save it
@@ -6426,20 +6413,20 @@ blit_plane_any_internal_cookie_cut:
 .d1_zero
     move.l  #$0fca0000,d5    ;B+C-A->D cookie cut   
 
-    move    d0,d3
+    move    d0,d7
     beq.b   .d0_zero
-    and.w   #$F,D3
+    and.w   #$F,d7
     and.w   #$1F0,d0
     lsr.w   #3,d0
 
-    lsl.l   #8,d3
-    lsl.l   #4,d3
-    or.w    d3,d5            ; add shift to mask (bplcon1)
-    swap    d3
-    clr.w   d3
-    or.l    d3,d5            ; add shift
+    lsl.l   #8,d7
+    lsl.l   #4,d7
+    or.w    d7,d5            ; add shift to mask (bplcon1)
+    swap    d7
+    clr.w   d7
+    or.l    d7,d5            ; add shift
     
-    move.w  d0,d3
+    move.w  d0,d7
     add.w   d0,d1
     
 .d0_zero
@@ -6454,7 +6441,7 @@ blit_plane_any_internal_cookie_cut:
     swap    d1
     clr.w   d1
     swap    d1
-    add.w   d3,a2       ; X
+    add.w   d7,a2       ; X
 ;;.d1_zero    
     ; compute offset for maze plane
     add.l   d1,a2       ; Y maze plane position
@@ -6463,9 +6450,9 @@ blit_plane_any_internal_cookie_cut:
 
     sub.w   d2,d0       ; blit width
 
-    lsl.w   #6,d7
+    lsl.w   #6,d4
     lsr.w   #1,d2
-    add.w   d2,d7       ; blit height
+    add.w   d2,d4       ; blit height
 
     ; always the same settings (ATM)
 
@@ -6474,7 +6461,7 @@ blit_plane_any_internal_cookie_cut:
     
     ; blitter registers set
 
-    move.w  d4,bltafwm(a5)
+    move.l  d3,bltafwm(a5)
 	clr.w bltamod(a5)		;A modulo=bytes to skip between lines
 	clr.w bltbmod(a5)		;A modulo=bytes to skip between lines
 	move.l d5,bltcon0(a5)	; sets con0 and con1
@@ -6486,7 +6473,7 @@ blit_plane_any_internal_cookie_cut:
 	move.l a0,bltbpt(a5)	;source graphic top left corner
 	move.l a2,bltcpt(a5)	;pristine background
 	move.l a1,bltdpt(a5)	;destination top left corner
-	move.w  d7,bltsize(a5)	;rectangle size, starts blit
+	move.w  d4,bltsize(a5)	;rectangle size, starts blit
     
     movem.l (a7)+,d0-d7
     rts
@@ -7132,7 +7119,7 @@ loop_array:
     
 
 player_kill_anim_table:
-    REPT    NB_TICKS_PER_SEC/2
+    REPT    NB_TICKS_PER_SEC/4
     dc.b    1
     ENDR
     REPT    NB_TICKS_PER_SEC/8
@@ -7165,7 +7152,7 @@ player_kill_anim_table:
     REPT    NB_TICKS_PER_SEC/4
     dc.b    11
     ENDR
-    REPT    NB_TICKS_PER_SEC
+    REPT    NB_TICKS_PER_SEC+NB_TICKS_PER_SEC/4
     dc.b    11		; TEMP
     ENDR
     even

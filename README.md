@@ -22,14 +22,10 @@ FEATURES:
 
 MINOR ISSUES:
 
-- quitting game when player is killed crashes on kickstart 1.3 (test with whdload kick1.3)
 - ghosts in pen bounce too fast in high levels
 - redo demo mode
 - add keyboard control
 - add second button pause
-- graphical glitches on some configs, specially when fruit appears (not reproduced)
-- REDO interface of internal blitter functions: don't set mask before waitblit! all blits WRONG!!!
-- death animation: one frame out of bounds => access fault
 
 ABOUT ACTS:
 
