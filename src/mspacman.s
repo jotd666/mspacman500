@@ -1202,10 +1202,11 @@ init_player
     clr.w   death_frame_offset
     clr.l   bonus+xpos  ; reset bonus position to an invalid value
     move.w  #-1,bonus_previous_y    ; no previous bonus position either
+    clr.l   previous_mspacman_address   ; no previous mspacman position
     ; if there was a bonus running, remove it
     bsr remove_bonus
     bsr remove_bonus_score
-
+    
     lea player(pc),a0
     move.l  #'MRSP',character_id(a0)
     bsr     init_any_pac
@@ -1233,7 +1234,7 @@ init_player
 .played
     IFD    RECORD_INPUT_TABLE_SIZE
     move.l  #record_input_table,record_data_pointer ; start of table
-    clr.l   previous_joystick_state
+    clr.l   prev_record_joystick_state
     clr.l   previous_random
     ENDC
 
@@ -1243,7 +1244,7 @@ init_player
     move.w  d0,ready_timer
     move.w  #-1,player_killed_timer
     move.w  #-1,ghost_eaten_timer
-    clr.w   next_ghost_score
+    clr.w   next_ghost_iteration_score
     clr.w   fright_timer
     clr.b   eat_toggle
     
@@ -1654,7 +1655,7 @@ draw_ghosts_normal
     
     tst.b   debug_flag
     bne.b   .debug_targets
-.next_ghost
+.next_ghost_iteration
     add.l   #Ghost_SIZEOF,a0
     dbf d7,.gloop
     rts
@@ -1686,7 +1687,7 @@ draw_ghosts_normal
     move.w  d2,(6+8,a1)
     swap    d2
     move.w  d2,(2+8,a1)    
-    bra.b   .next_ghost
+    bra.b   .next_ghost_iteration
 
 .eyes
     move.l eye_frame_table(a0),a1
@@ -3013,7 +3014,12 @@ level2_interrupt:
 	MOVE.B	$1C01(A5),D0
 	NOT.B	D0
 	ROR.B	#1,D0		; raw key code here
-    bmi.b   .no_playing     ; we don't care about key release
+    
+    lea keyboard_table(pc),a0
+    and.w   #$FF,d0
+    bclr    #7,d0
+    seq (a0,d0.w)       ; updates keyboard table
+    bne.b   .no_playing     ; we don't care about key release
     ; cheat key activation sequence
     move.l  cheat_sequence_pointer(pc),a0
     cmp.b   (a0)+,d0
@@ -3253,8 +3259,41 @@ level3_interrupt:
     movem.l (a7)+,d0-a6
     rte    
 .vblank
+    move.l  joystick_state(pc),d1
     moveq.l #1,d0
     bsr _read_joystick
+    btst    #JPB_BTN_BLU,d0
+    beq.b   .no_second
+    btst    #JPB_BTN_BLU,d1
+    bne.b   .no_second
+    eor.b   #1,pause_flag
+.no_second
+    lea keyboard_table(pc),a0
+    tst.b   ($40,a0)    ; up key
+    beq.b   .no_fire
+    bset    #JPB_BTN_RED,d0
+.no_fire 
+    tst.b   ($4C,a0)    ; up key
+    beq.b   .no_up
+    bset    #JPB_BTN_UP,d0
+    bra.b   .no_down
+.no_up    
+    tst.b   ($4D,a0)    ; down key
+    beq.b   .no_down
+	; set DOWN
+    bset    #JPB_BTN_DOWN,d0
+.no_down    
+    tst.b   ($4F,a0)    ; left key
+    beq.b   .no_left
+	; set LEFT
+    bset    #JPB_BTN_LEFT,d0
+    bra.b   .no_right   
+.no_left
+    tst.b   ($4E,a0)    ; right key
+    beq.b   .no_right
+	; set RIGHT
+    bset    #JPB_BTN_RIGHT,d0
+.no_right    
     move.l  d0,joystick_state
     move.w  #$0020,(intreq,a5)
     movem.l (a7)+,d0-a6
@@ -3596,8 +3635,8 @@ a_ghost_was_eaten:
     bsr     play_fx
 .no_sound
     
-    move.w  next_ghost_score(pc),d0
-    add.w   #1,next_ghost_score
+    move.w  next_ghost_iteration_score(pc),d0
+    add.w   #1,next_ghost_iteration_score
     add.w   d0,d0
     add.w   d0,d0
     lea  score_value_table(pc),a0
@@ -3693,7 +3732,7 @@ update_intro_screen
     move.w  d0,ypos(a0)
     cmp.w   .y_target(pc),d0
     bne.b   .no_dirchange
-.next_ghost
+.next_ghost_iteration
     add.w   #1,intro_text_message       ; next ghost / mspacman
     add.w   #Ghost_SIZEOF,.ghost_to_update
     add.w   #17,.y_target
@@ -3793,6 +3832,7 @@ update_intermission_screen_level_9:
     move.w  #X_MAX,stork_x
     move.w  #100-Y_START,stork_y
     move.w  stork_x(pc),junior_x
+    sub.w   #1,junior_x
     move.w  stork_y(pc),junior_y
     clr.w   stork_frame
     clr.w   baby_released
@@ -4248,29 +4288,36 @@ draw_intermission_screen_level_2:
     tst.w  clapper_drawn
     bpl.b   .outd
 
-    
-    bsr draw_ghosts
+    cmp.w   #4,intermission_phase
+    beq.b   .outd
   
-
     bsr draw_mspacman
     bsr draw_pacman
-    
+
     cmp.w   #3,intermission_phase
-    bne.b   .outd
+    beq.b   .phase3
+
+    bsr draw_ghosts
+    rts
+    
+.phase3    
     bsr     hide_sprites
     lea     player(pc),a4
     move.w  #X_MAX/2-8-X_START,d0
     move.w  ypos(a4),d1
     sub.w   #24+Y_START,d1
     lea     screen_data,a1
+    moveq.l #-1,d2
     lea     heart,a0
     movem.w d0-d1,-(a7)
     bsr     blit_plane
     movem.w (a7)+,d0-d1
     lea     screen_data+3*SCREEN_PLANE_SIZE,a1
     bsr     blit_plane
+    move.w  #4,intermission_phase
 .outd    
     rts
+    
     
 CLAPPER_X = 44
 CLAPPER_Y = 88-Y_START
@@ -4734,7 +4781,7 @@ update_ghosts:
     ; now just exited the pen: go left (unless some reverse flag is set)
     move.w  #LEFT,direction(a4)
     move.w  #-1,h_speed(a4)
-    move.w  #0,v_speed(a4)
+    clr.w   v_speed(a4)
     bra.b   .no_pen
 .in_pen_test_2
     ; below red start, see if currenty-48 is above red start
@@ -4847,7 +4894,7 @@ update_ghosts:
     bne.b   .tile_change
 .tile_change_done
     bsr.b   .set_speed_vector
-.next_ghost
+.next_ghost_iteration
     move.w  (a7)+,d0
     dbf d0,.move_loop
 .ghost_done
@@ -4884,6 +4931,9 @@ update_ghosts:
     
 .no_life_lost
     rts
+.next_ghost
+    add.w  #2,a7  ; pops up stack but don't iterate even if speed is 2
+    bra.b   .ghost_done
 
 ; < A4: ghost structure    
 .can_exit_pen
@@ -4939,7 +4989,7 @@ update_ghosts:
     ; no more eyes
     bsr resume_sound_loop
 .nothing
-    bra.b   .next_ghost
+    bra.b   .next_ghost_iteration
 .no_eyes
     ; now the tricky bit: decide where to go
     ; first check for "reverse flag" signal
@@ -4949,7 +4999,7 @@ update_ghosts:
     neg.w  h_speed(a4)
     neg.w  v_speed(a4)
     bsr    .set_direction_from_speed
-    bra.b   .next_ghost
+    bra.b   .next_ghost_iteration
 .no_reverse
     ; direction NOT changed, check objective if not fright mode
     bsr .compute_possible_directions
@@ -4983,7 +5033,7 @@ update_ghosts:
     dbf     d0,.try_dir
     ; no free direction, probably cornercase with in-pen/exiting pen
     ; ignore
-    bra.b   .next_ghost
+    bra.b   .next_ghost_iteration
 .free_direction
     moveq   #0,d0
     move.b  (1,a0),d0      ; translate to actual direction enumerate
@@ -5401,7 +5451,7 @@ play_loop_fx
 power_pill_taken
     move.l  d2,-(a7)
     ; resets next ghost eaten score
-    clr.w  next_ghost_score
+    clr.w  next_ghost_iteration_score
 
     cmp.w   #STATE_PLAYING,current_state
     bne.b   .no_sound
@@ -5925,10 +5975,10 @@ record_input:
     tst.l   d0
     bne.b   .store
     ; 0 twice: ignore (saves space)
-    cmp.l   previous_joystick_state(pc),d0
+    cmp.l   prev_record_joystick_state(pc),d0
     beq.b   .no_input
 .store
-    move.l  d0,previous_joystick_state
+    move.l  d0,prev_record_joystick_state
     clr.b   d1
     ; now store clock & joystick state, "compressed" to 4 bits (up,down,left,right)
     btst    #JPB_BTN_RIGHT,d0
@@ -6921,6 +6971,7 @@ graphicsname:   dc.b "graphics.library",0
 dosname
         dc.b    "dos.library",0
             even
+IGNORE_JOY_DIRECTIONS
     include ReadJoyPad.s
     include RNC_1C.s
     ; variables
@@ -6938,10 +6989,12 @@ record_data_pointer
 record_input_clock
     dc.w    0    
     IFD    RECORD_INPUT_TABLE_SIZE
-previous_joystick_state
+prev_record_joystick_state
     dc.l    0
 
-    ENDC    
+    ENDC
+
+    
 ready_timer:
     dc.w    0
 first_ready_timer:
@@ -6976,7 +7029,7 @@ last_ghost_eaten_state_timer
     dc.w    0
 fruit_score_index:
     dc.w    0
-next_ghost_score
+next_ghost_iteration_score
     dc.w    0
 previous_mspacman_address
     dc.l    0
@@ -7513,9 +7566,11 @@ play_music
     sub.l   a1,a1
     bsr _mt_init
     ; set master volume a little less loud
-    lea MasterVolTab30,a0
-    lea mt_data,a4
-    move.l  a0,mt_MasterVolTab(a4)
+    ; supposed to be max at 64 but actually 20 is already
+    ; super loud...
+    move.w  #12,d0
+    bsr _mt_mastervol
+    
     bsr _mt_start
     st.b    music_playing
     movem.l (a7)+,d0-a6
@@ -7889,6 +7944,9 @@ fruit_bounce_table
 end_fruit_bounce_table
     even
 
+keyboard_table:
+    ds.b    $100,0
+    
     include "maze_data.s"       ; generated by "convert_sprites.py" python script
 
     

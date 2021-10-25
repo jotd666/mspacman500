@@ -7,6 +7,7 @@ the original, though.
 
 REQUIRES:
 
+- any 68k CPU
 - Kickstart 1.3, 512k memory or
 - Kickstart 2.0, 1MB memory
 
@@ -17,15 +18,20 @@ FEATURES:
 - 50 frames per second (PAL) even on a 68000 A500
 - all levels & bonuses & intermission sequences
 - original intro
-- joystick controlled (port 1)
+- joystick controlled (port 1) or keyboard controls (arrows + space)
 - can run directly from shell or from whdload (fast machines/complex configurations)
+
+CONTROLS:
+
+- joystick directions/arrows: move pacman
+- space/fire button: start game
+- P/second button: pause
+- F10 (or quitkey): quit
 
 MINOR ISSUES:
 
-- ghosts in pen bounce too fast in high levels
-- redo demo mode
-- add keyboard control
-- add second button pause
+- ghosts in pen bounce slightly too fast in high levels
+- a few pixels of mspacman left in very rare occasions
 
 ABOUT ACTS:
 
