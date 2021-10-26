@@ -310,6 +310,13 @@ Start:
 
     move.l  4,a6
     jsr _LVOForbid(a6)
+    
+	sub.l	A1,A1
+	jsr	_LVOFindTask(a6)		;find ourselves
+	move.l	D0,A0
+	move.l	#-1,pr_WindowPtr(A0)	; no more system requesters (insert volume, write protected...)
+
+    
 .no_forbid
     
 ;    sub.l   a1,a1
@@ -3259,13 +3266,24 @@ level3_interrupt:
     movem.l (a7)+,d0-a6
     rte    
 .vblank
-    move.l  joystick_state(pc),d1
     moveq.l #1,d0
     bsr _read_joystick
+    
+    
     btst    #JPB_BTN_BLU,d0
     beq.b   .no_second
-    btst    #JPB_BTN_BLU,d1
+    move.l  joystick_state(pc),d2
+    btst    #JPB_BTN_BLU,d2
     bne.b   .no_second
+
+    ; no pause if not in game or music is playing
+    cmp.w   #STATE_PLAYING,current_state
+    bne.b   .no_second
+    tst.b   demo_mode
+    bne.b   .no_second
+    tst.b   music_playing
+    bne.b   .no_pause
+    
     eor.b   #1,pause_flag
 .no_second
     lea keyboard_table(pc),a0
@@ -6971,7 +6989,7 @@ graphicsname:   dc.b "graphics.library",0
 dosname
         dc.b    "dos.library",0
             even
-IGNORE_JOY_DIRECTIONS
+
     include ReadJoyPad.s
     include RNC_1C.s
     ; variables
