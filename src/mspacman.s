@@ -261,6 +261,8 @@ mul\1_table
 	endr
     ENDM
     
+; D0:X, D1:Y, A1: plane start => A1: address
+; D0/D1 cleared, \1 trashed
 ADD_XY_TO_A1:MACRO
     lea mul40_table(pc),\1
     add.w   d1,d1
@@ -268,6 +270,8 @@ ADD_XY_TO_A1:MACRO
     move.w  (\1,d1.w),d1
     add.w   d0,a1       ; plane address
     add.w   d1,a1       ; plane address
+    clr.l   d0
+    clr.l   d1
     ENDM
 
 
@@ -571,12 +575,16 @@ intro:
     ; global dot counter for ghosts to exit pen is reset
     clr.b   ghost_release_dot_counter
     
+    tst.b   infinite_lives_cheat_flag
+    bne.b   .new_life
     subq.b   #1,nb_lives
     bne.b   .new_life
 
     ; save highscores if whdload
     tst.l   _resload
     beq.b   .no_save
+    tst.w   cheat_keys
+    bne.b   .no_save
     bsr     save_highscores
 .no_save
     ; 3 seconds
@@ -773,15 +781,19 @@ init_level:
 ; clear planes used for score (score hidden in acts)
 clear_scores
     lea	screen_data+SCREEN_PLANE_SIZE*1,a1
-    move.w  #232,d0
+    move.w  #NB_BYTES_PER_MAZE_LINE*8,d0
     move.w  #16,d1
-    move.w  #9,d2
+    move.w  #12,d2
     move.w  #4,d3
+    ; compute direct address to save time
+    ADD_XY_TO_A1    a0
+    move.l  a1,a0
+    ; intermix blitter & cpu for faster speed
 .loop
-    lea	screen_data+SCREEN_PLANE_SIZE*1,a1
-    bsr clear_plane_any
+    move.l  a0,a1
+    bsr clear_plane_any_blitter
     add.w	#SCREEN_PLANE_SIZE,a1
-    bsr clear_plane_any
+    bsr clear_plane_any_cpu
     add.w   #16,d1
     dbf d3,.loop
     rts
@@ -2234,10 +2246,7 @@ draw_intro_screen
     move.b  #$C0,d2
     bra.b   .red_done
 .horiz
-    tst.w   d0
-    bne.b   .xx
-;;    addq.w  #1,d0
-.xx    
+ 
     move.w  d0,d5   ; save for later
     lsr.b   #1,d0   ; divide by 2, get relevant byte
     bcc.b   .even   ; shifted out bit was 0: value was even
@@ -2429,27 +2438,43 @@ draw_bonus_score:
 .out    
     rts
     
-; what: clears a plane of any width (ATM not using blitter), 16 height
+
+; what: clears a plane of any width (not using blitter, no shifting, start is multiple of 8), 16 height
 ; args:
-; < A1: dest
+; < A1: dest (must be even)
 ; < D0: X (multiple of 8)
 ; < D1: Y
-; < D2: blit width in bytes (+2)
+; < D2: blit width in bytes (even, 2 must be added same interface as blitter)
 ; trashes: none
 
-clear_plane_any
-    movem.l d0-D2/a0-a2,-(a7)
-    lsr.w   #3,d0
-    add.w   d0,a1
+clear_plane_any_cpu:
+    movem.l d0-D3/a0-a2,-(a7)
+    add.w   d1,d1
+    beq.b   .zero
     lea mul40_table(pc),a2
-    add.w   d1,d1    
     move.w  (a2,d1.w),d1
     add.w   d1,a1
+.zero
+
+    lsr.w   #3,d0
+    add.w   d0,a1
+    
     move.l  a1,a0
+    ; length must be a multiple of 4
+    ; and target even address offset so
+    ; longword optimization can be used
+    btst    #1,d2
+    bne.b   .odd
+    btst    #0,d2
+    bne.b   .odd
+    btst    #0,d0
+    beq.b   .even
+.odd    
+    ; odd address
     move.w  #15,d0
+    subq.w  #1,d2   ; - 1 for dbf
 .yloop
-    move.w  d2,d1
-    addq.w  #1,d1   ; 2-1
+    move.w  d2,d1   ; reload d1
 .xloop
     clr.b   (a0)+
     dbf d1,.xloop
@@ -2458,8 +2483,132 @@ clear_plane_any
     move.l  a1,a0
     dbf d0,.yloop
 .out
-    movem.l (a7)+,d0-D2/a0-a2
+    movem.l (a7)+,d0-D3/a0-a2
     rts
+
+.even
+    ; odd address
+    move.w  #15,d0
+    lsr.w   #2,d2
+    beq.b   .out    ; < 4 not supported
+    subq.w  #1,d2   ; - 1 for dbf
+.yloop2
+    move.w  d2,d1
+.xloop2
+    clr.l   (a0)+
+    dbf d1,.xloop2
+    ; next line
+    add.l   #NB_BYTES_PER_LINE,a1
+    move.l  a1,a0
+    dbf d0,.yloop2
+    bra.b   .out
+    
+; what: clears a plane of (almost) any width (using blitter), 16 height
+; this is coarse grain erase, no barrel shifter (doesn't seem to work anyway)
+; args:
+; < A1: dest
+; < D0: X (multiple of 8, aligned on 16)
+; < D1: Y
+; < D2: rect width in bytes (min 4 bytes)
+; trashes: none
+    
+clear_plane_any_blitter:
+    ;;bra clear_plane_any_cpu
+    movem.l d0-d6/a1/a2/a5,-(a7)
+    lea _custom,a5
+    moveq.l #-1,d3
+    move.w  #16,d4
+    bsr clear_plane_any_blitter_internal
+    movem.l (a7)+,d0-d6/a1/a2/a5
+    rts
+
+
+;; C version
+;;   UWORD minterm = 0xA;
+;;
+;;    if (mask_base) {
+;;      minterm |= set_bits ? 0xB0 : 0x80;
+;;    }
+;;    else {
+;;      minterm |= set_bits ? 0xF0 : 0x00;
+;;    }
+;;
+;;    wait_blit();
+;;
+;;    // A = Mask of bits inside copy region
+;;    // B = Optional bitplane mask
+;;    // C = Destination data (for region outside mask)
+;;    // D = Destination data
+;;    custom.bltcon0 = BLTCON0_USEC | BLTCON0_USED | (mask_base ? BLTCON0_USEB : 0) | minterm;
+;;    custom.bltcon1 = 0;
+;;    custom.bltbmod = mask_mod_b;
+;;    custom.bltcmod = dst_mod_b;
+;;    custom.bltdmod = dst_mod_b;
+;;    custom.bltafwm = left_word_mask;
+;;    custom.bltalwm = right_word_mask;
+;;    custom.bltadat = 0xFFFF;
+;;    custom.bltbpt = (APTR)mask_start_b;
+;;    custom.bltcpt = (APTR)dst_start_b;
+;;    custom.bltdpt = (APTR)dst_start_b;
+;;    custom.bltsize = (height << BLTSIZE_H0_SHF) | width_words;
+;;  }
+  
+; < A5: custom
+; < D0,D1: x,y
+; < A1: plane pointer
+; < D2: width in bytes (min 4 bytes)
+; < D3: blit mask
+; < D4: blit height
+; trashes D0-D6
+; > A1: even address where blit was done
+clear_plane_any_blitter_internal:
+    ; pre-compute the maximum of shit here
+    lea mul40_table(pc),a2
+    add.w   d1,d1
+    beq.b   .d1_zero    ; optim
+    move.w  (a2,d1.w),d1
+.d1_zero
+    move.l  #$030A0000,d5   ; minterm useC useD & rect clear (0xA) 
+    ;move    d0,d6
+    ;beq.b   .d0_zero
+    ;and.w   #$F,d6
+    and.w   #$1F0,d0
+    beq.b   .d0_zero
+    lsr.w   #3,d0
+    add.w   d0,d1
+
+    ;swap    d6
+    ;clr.w   d6
+    ;lsl.l   #8,d6
+    ;lsl.l   #4,d6
+    ;or.l    d6,d5            ; add shift
+.d0_zero    
+    swap    d1
+    clr.w   d1
+    swap    d1
+    add.l   d1,a1       ; plane position (always even)
+
+	move.w #NB_BYTES_PER_LINE,d0
+    sub.w   d2,d0       ; blit width
+
+    lsl.w   #6,d4
+    lsr.w   #1,d2
+    add.w   d2,d4       ; blit height
+
+
+    ; now just wait for blitter ready to write all registers
+	bsr	wait_blit
+    
+    ; blitter registers set
+    move.l  d3,bltafwm(a5)
+	move.l d5,bltcon0(a5)	
+    move.w  d0,bltdmod(a5)	;D modulo
+	move.w  #-1,bltadat(a5)	;source graphic top left corner
+	move.l a1,bltcpt(a5)	;destination top left corner
+	move.l a1,bltdpt(a5)	;destination top left corner
+	move.w  d4,bltsize(a5)	;rectangle size, starts blit
+    rts
+
     
 draw_last_life:
     lea pac_lives,a0
@@ -2485,7 +2634,7 @@ draw_lives:
     move.l #NB_BYTES_PER_MAZE_LINE*8,d0
     moveq.l #0,d1
     move.l  #8,d2
-    bsr clear_plane_any
+    bsr clear_plane_any_cpu
     add.w   #SCREEN_PLANE_SIZE,a1
     dbf d7,.cloop
     
@@ -2885,7 +3034,6 @@ refresh_dot:
     beq.b   .out
 
     ; there is a pill there, draw it
-    LOGPC   100
     lea mul40_table(pc),a1
     sub.w   #3,d2
     lsl.w   #4,d2   ; *8*2
@@ -3074,11 +3222,23 @@ level2_interrupt:
     beq.b   .x
     move.w  #$F,d0
 .x
-    and.w   #$FF00,d0
+    and.w   #$FF,d0
     or.w  #$0F0,d0
     move.w  d0,_custom+color
     bra.b   .no_playing
 .no_invincible
+    cmp.b   #$52,d0
+    bne.b   .no_infinite_lives
+    eor.b   #1,infinite_lives_cheat_flag
+    move.b  infinite_lives_cheat_flag(pc),d0
+    beq.b   .y
+    move.w  #$F,d0
+.y
+    and.w   #$FF,d0
+    or.w  #$0F0,d0
+    move.w  d0,_custom+color
+    bra.b   .no_playing
+.no_infinite_lives
     cmp.b   #$53,d0     ; F4
     bne.b   .no_debug
     ; show/hide debug info
@@ -3958,7 +4118,6 @@ draw_intermission_screen_level_9:
     bsr draw_pacman
     move.w  #1,pac_drawn
 .no_draw
-    lea     screen_data,a1
     move.w  stork_x(pc),d0
     add.w   #24,d0
     
@@ -3968,14 +4127,17 @@ draw_intermission_screen_level_9:
     cmp.w   #X_MAX-36,d0
     bcc.b   .no_erase
     move.w  stork_y(pc),d1
-    move.w  #2,d2
-    bsr     clear_plane_any
-    add.w   #SCREEN_PLANE_SIZE,a1
-    bsr     clear_plane_any
-    add.w   #SCREEN_PLANE_SIZE,a1
-    bsr     clear_plane_any
-    add.w   #SCREEN_PLANE_SIZE,a1
-    bsr     clear_plane_any
+    move.w  #4,d2
+    lea     screen_data,a1
+    ADD_XY_TO_A1    a0
+    move.w  #SCREEN_PLANE_SIZE,d3
+    bsr     clear_plane_any_blitter
+    add.w   d3,a1
+    bsr     clear_plane_any_cpu
+    add.w   d3,a1
+    bsr     clear_plane_any_blitter
+    add.w   d3,a1
+    bsr     clear_plane_any_cpu
     
     tst.w   baby_released
     beq.b   .no_erase
@@ -3983,14 +4145,15 @@ draw_intermission_screen_level_9:
     ; also erase baby wrap
     move.w  junior_x(pc),d0
     move.w  junior_y(pc),d1
-    move.w  #2,d2
-    bsr     clear_plane_any
-    add.w   #SCREEN_PLANE_SIZE,a1
-    bsr     clear_plane_any
-    add.w   #SCREEN_PLANE_SIZE,a1
-    bsr     clear_plane_any
-    add.w   #SCREEN_PLANE_SIZE,a1
-    bsr     clear_plane_any
+    ADD_XY_TO_A1    a0
+    move.w  #4,d2
+    bsr     clear_plane_any_blitter
+    add.w   d3,a1
+    bsr     clear_plane_any_cpu
+    add.w   d3,a1
+    bsr     clear_plane_any_blitter
+    add.w   d3,a1
+    bsr     clear_plane_any_cpu
     
 .no_erase    
     lea stork_0,a0
@@ -4010,6 +4173,8 @@ draw_intermission_screen_level_9:
     move.w  #6,d2
     move.w  #16,D4 ; blit height
  
+    ; stork blitting / clipping
+    
     lea     screen_data,a1
     move.l  a1,a2
     bsr blit_plane_any
@@ -4025,21 +4190,21 @@ draw_intermission_screen_level_9:
     
     bsr blit_plane_any
     ; right clip
-    ; clear previous plane now that blit has ended
+    ; clear previous plane using cpu now that blit has ended
     lea (-SCREEN_PLANE_SIZE,a2),a1
     move.w  #X_MAX,d0
     move.w  stork_y(pc),d1
-    move.w  #8,d2
-    bsr     clear_plane_any
+    move.w  #10,d2
+    bsr     clear_plane_any_cpu
     dbf d5,.loop
 
     bsr wait_blit
+    ; last plane clip
     move.l  a2,a1
     move.w  #X_MAX,d0
     move.w  stork_y(pc),d1
-    move.w  #8,d2
-    bsr     clear_plane_any
-
+    move.w  #10,d2
+    bsr     clear_plane_any_cpu
     
     ; baby wrap
     move.w  junior_x(pc),d0
@@ -4406,9 +4571,9 @@ draw_clapper
     move.w  #CLAPPER_X,d0
     move.w  #CLAPPER_Y,d1
     move.w  #6,d2
-    bsr     clear_plane_any
+    bsr     clear_plane_any_blitter
     move.w  #CLAPPER_Y+16,d1
-    bsr     clear_plane_any
+    bsr     clear_plane_any_cpu
     rts
     
 .act_number
@@ -6946,6 +7111,8 @@ load_highscores
     rts
     
 save_highscores
+    tst.w   cheat_keys
+    bne.b   .out
     tst.b   highscore_needs_saving
     beq.b   .out
     lea scores_name(pc),a0
@@ -7143,6 +7310,8 @@ ghost_release_dot_counter
 nb_dots_eaten
     dc.b    0
 invincible_cheat_flag
+    dc.b    0
+infinite_lives_cheat_flag
     dc.b    0
 debug_flag
     dc.b    0

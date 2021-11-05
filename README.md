@@ -32,7 +32,10 @@ MINOR ISSUES:
 
 - ghosts in pen bounce slightly too fast in high levels
 - a few pixels of mspacman left in very rare occasions
-
+- fire to skip intermission sequences
+- tearing in "junior" intermission sequences on slow machines. Maybe use blitter to clear planes!!
+  or use double buffering
+  
 ABOUT ACTS:
 
  The intermissions have been changed to "Acts". The first one shows how Pac-Man and Ms. Pac-Man first meet,
