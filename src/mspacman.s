@@ -347,27 +347,9 @@ Start:
 
     bsr init_interrupts
     ; intro screen
-    
-    
-    moveq #NB_PLANES,d4
-    lea	bitplanes,a0              ; adresse de la Copper-List dans a0
-    move.l #screen_data,d1
-    move.w #bplpt,d3        ; premier registre dans d3
 
-		; 8 bytes per plane:32 + end + bplcontrol
-.mkcl:
-    move.w d3,(a0)+           ; BPLxPTH
-    addq.w #2,d3              ; next register
-    swap d1
-    move.w d1,(a0)+           ; 
-    move.w d3,(a0)+           ; BPLxPTL
-    addq.w #2,d3              ; next register
-    swap d1
-    move.w d1,(a0)+           ; 
-    add.l #SCREEN_PLANE_SIZE,d1       ; next plane of maze
-
-    dbf d4,.mkcl
-    
+    move.l #screen_data,d0   
+    bsr   set_bitplanes    
 
     lea game_palette(pc),a0
     lea _custom+color,a1
@@ -637,6 +619,23 @@ wait_bof
 	beq.b	.wait2
 	move.l	(a7)+,d0
 	rts    
+ 
+; what: sets bitplanes in copperlist
+; < D0: address of first bitplane
+; trashes D1, A0
+
+set_bitplanes
+    moveq #NB_PLANES-1,d1
+    lea	bitplanes+2,a0    
+.mkcl:
+    swap d0
+    move.w d0,(a0)
+    swap d0
+    move.w d0,(4,a0)    
+    addq.w  #8,a0
+    add.l #SCREEN_PLANE_SIZE,d0       ; next plane of maze
+    dbf d1,.mkcl
+    rts
     
 clear_debug_screen
     movem.l d0-d1/a1,-(a7)
@@ -656,9 +655,10 @@ clear_screen
     lea screen_data,a1
     moveq.l #3,d0
 .cp
-    move.w  #(NB_BYTES_PER_LINE*NB_LINES)/4-1,d1
+    move.w  #(NB_BYTES_PER_LINE*NB_LINES)/8-1,d1
     move.l  a1,a2
 .cl
+    clr.l   (a2)+
     clr.l   (a2)+
     dbf d1,.cl
     add.l   #SCREEN_PLANE_SIZE,a1
@@ -8173,9 +8173,9 @@ dot_table
     SECTION  S4,DATA,CHIP
 ; main copper list
 coplist
-bitplanes:
    dc.l  $01080000
    dc.l  $010a0000
+bitplanes:
    dc.l  $00e00000
    dc.l  $00e20000
    dc.l  $00e40000

@@ -23,7 +23,7 @@ FEATURES:
 
 CONTROLS:
 
-- joystick directions/arrows: move pacman
+- joystick directions/arrows: move ms pacman
 - space/fire button: start game/skip act (intermission) screens
 - P/second button: pause
 - F10 (or quitkey): quit to DOS
