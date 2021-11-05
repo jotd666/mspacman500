@@ -494,7 +494,7 @@ intro:
     bne.b   .out_intermission
     tst.b   quit_flag
     bne.b   .out
-    move.w  joystick_state(pc),d0
+    move.l  joystick_state(pc),d0
     btst    #JPB_BTN_RED,d0
     bne.b   .out_intermission
     bra.b   .intermission_loop   
@@ -3190,6 +3190,8 @@ level2_interrupt:
     
     cmp.b   #$45,d0
     bne.b   .no_esc
+    cmp.w   #STATE_INTERMISSION_SCREEN,current_state
+    beq.b   .no_esc
     cmp.w   #STATE_INTRO_SCREEN,current_state
     beq.b   .no_esc
     cmp.w   #STATE_GAME_START_SCREEN,current_state
@@ -6297,11 +6299,20 @@ draw_mspacman:
     ; first, remove first plane
     tst.l   d5    
     beq.b   .no_erase
-    ; erase first plane
+    ; erase first plane using blitter
+    clr.l   d0
+    clr.l   d1
     move.l  d5,a1
-    REPT    18
-    clr.l   ((REPTN-1)*NB_BYTES_PER_LINE,a1)
-    ENDR
+    moveq.w #4,d2
+    ; clear plane, height = 18 bytes, using blitter
+    movem.l d4-d6/a2,-(a7)
+    lea _custom,a5
+    moveq.l #-1,d3
+    move.w  #18,d4
+    bsr clear_plane_any_blitter_internal
+    movem.l (a7)+,d4-d6/a2
+
+
 .no_erase
     move.w  direction(a2),d0
     lea  pac_dir_table(pc),a0

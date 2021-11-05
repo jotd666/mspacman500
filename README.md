@@ -24,18 +24,18 @@ FEATURES:
 CONTROLS:
 
 - joystick directions/arrows: move pacman
-- space/fire button: start game
+- space/fire button: start game/skip act (intermission) screens
 - P/second button: pause
-- F10 (or quitkey): quit
+- F10 (or quitkey): quit to DOS
+- ESC: quit current game
 
 MINOR ISSUES:
 
 - ghosts in pen bounce slightly too fast in high levels
 - a few pixels of mspacman left in very rare occasions
-- fire to skip intermission sequences
-- tearing in "junior" intermission sequences on slow machines. Maybe use blitter to clear planes!!
-  or use double buffering
-  
+- use double buffering
+- level 4 ghosts still slow down in tunnels
+
 ABOUT ACTS:
 
  The intermissions have been changed to "Acts". The first one shows how Pac-Man and Ms. Pac-Man first meet,
