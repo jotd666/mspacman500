@@ -263,7 +263,7 @@ mul\1_table
     
 ; D0:X, D1:Y, A1: plane start => A1: address
 ; D1 cleared, \1 trashed
-; D0 / 8
+; D0 cleared (modulo needs to be saved if needed)
 ADD_XY_TO_A1:MACRO
     lea mul40_table(pc),\1
     add.w   d1,d1
@@ -272,6 +272,7 @@ ADD_XY_TO_A1:MACRO
     add.w   d0,a1       ; plane address
     add.w   d1,a1       ; plane address
     clr.w   d1
+    clr.w   d0
     ENDM
 
 LOAD_SCREEN_DATA:MACRO
@@ -791,7 +792,7 @@ clear_scores
     move.w  #4,d3
     ; compute direct address to save time
     ADD_XY_TO_A1    a0
-    move.l  a1,a0
+    move.l  a1,a0    
     ; intermix blitter & cpu for faster speed
 .loop
     move.l  a0,a1
