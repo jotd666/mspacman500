@@ -262,7 +262,8 @@ mul\1_table
     ENDM
     
 ; D0:X, D1:Y, A1: plane start => A1: address
-; D0/D1 cleared, \1 trashed
+; D1 cleared, \1 trashed
+; D0 / 8
 ADD_XY_TO_A1:MACRO
     lea mul40_table(pc),\1
     add.w   d1,d1
@@ -270,11 +271,12 @@ ADD_XY_TO_A1:MACRO
     move.w  (\1,d1.w),d1
     add.w   d0,a1       ; plane address
     add.w   d1,a1       ; plane address
-    clr.l   d0
-    clr.l   d1
+    clr.w   d1
     ENDM
 
-
+LOAD_SCREEN_DATA:MACRO
+    lea screen_data+\1,a1
+    ENDM
     
 Start:
         ; if D0 contains "WHDL"
@@ -348,9 +350,9 @@ Start:
     bsr init_interrupts
     ; intro screen
 
-    move.l #screen_data,d0   
-    bsr   set_bitplanes    
-
+    ; set one buffer to display, another one to draw
+    bsr set_bitplanes
+    
     lea game_palette(pc),a0
     lea _custom+color,a1
     move.w  #31,d0
@@ -619,12 +621,14 @@ wait_bof
 	beq.b	.wait2
 	move.l	(a7)+,d0
 	rts    
- 
+
+
+    
+; set_bitplanes
 ; what: sets bitplanes in copperlist
-; < D0: address of first bitplane
-; trashes D1, A0
 
 set_bitplanes
+    move.l  #screen_data,d0
     moveq #NB_PLANES-1,d1
     lea	bitplanes+2,a0    
 .mkcl:
@@ -639,7 +643,7 @@ set_bitplanes
     
 clear_debug_screen
     movem.l d0-d1/a1,-(a7)
-    lea	screen_data+SCREEN_PLANE_SIZE*3,a1 
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE*3 
     move.w  #NB_LINES-1,d1
 .c0
     move.w  #NB_BYTES_PER_MAZE_LINE/4-1,d0
@@ -652,7 +656,7 @@ clear_debug_screen
     rts
     
 clear_screen
-    lea screen_data,a1
+    LOAD_SCREEN_DATA 0
     moveq.l #3,d0
 .cp
     move.w  #(NB_BYTES_PER_LINE*NB_LINES)/8-1,d1
@@ -780,7 +784,7 @@ init_level:
 
 ; clear planes used for score (score hidden in acts)
 clear_scores
-    lea	screen_data+SCREEN_PLANE_SIZE*1,a1
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE*1
     move.w  #NB_BYTES_PER_MAZE_LINE*8,d0
     move.w  #16,d1
     move.w  #12,d2
@@ -1291,7 +1295,7 @@ ghost_debug
     lea ghosts(pc),a2
     move.w  #DEBUG_X,d0
     move.w  #DEBUG_Y+100,d1
-    lea	screen_data+SCREEN_PLANE_SIZE*3,a1 
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE*3 
 
     bsr .debug_ghost
 
@@ -1424,7 +1428,7 @@ draw_debug
     lea player(pc),a2
     move.w  #DEBUG_X,d0
     move.w  #DEBUG_Y,d1
-    lea	screen_data+SCREEN_PLANE_SIZE*3,a1 
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE*3 
     lea .px(pc),a0
     bsr write_string
     lsl.w   #3,d0
@@ -1838,7 +1842,7 @@ PLAYER_ONE_Y = 102-14
     bsr handle_ready_text
 
     ; score
-    lea	screen_data+SCREEN_PLANE_SIZE*3,a1  ; white
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE*3  ; white
     
     move.l  score(pc),d0
     move.l  displayed_score(pc),d1
@@ -1902,7 +1906,7 @@ handle_ready_text
 .ready_off
     rts
     
-HIGHSCORE_RESTORE_ADDRESS = screen_data+2*SCREEN_PLANE_SIZE+(24+34)*NB_BYTES_PER_LINE+36
+HIGHSCORE_RESTORE_OFFSET = 2*SCREEN_PLANE_SIZE+(24+34)*NB_BYTES_PER_LINE+36
 
 ; < D2: highscore
 draw_high_score
@@ -1915,7 +1919,7 @@ draw_high_score
     ; so it's not overwritten by mspacman on level 1 tunnel
     ; also save the part of the "L" of "LEVEL"
 
-    lea HIGHSCORE_RESTORE_ADDRESS,a1
+    LOAD_SCREEN_DATA HIGHSCORE_RESTORE_OFFSET
     lea highscore_restore_buffer(pc),a0
     move.w  #4,d0
 .save
@@ -1932,7 +1936,7 @@ draw_high_score
 ; maybe it could have been fixed in some smarter way but that's
 ; cheap enough
 restore_high_score:
-    lea HIGHSCORE_RESTORE_ADDRESS,a1
+    LOAD_SCREEN_DATA HIGHSCORE_RESTORE_OFFSET
     lea highscore_restore_buffer(pc),a0
     move.w  #4,d0
 .rest
@@ -2096,7 +2100,7 @@ write_midway_stuff
     move.w #200,d1
 
     lea _custom,A5
-    lea     screen_data,a1
+    LOAD_SCREEN_DATA 0
     moveq.l #3,d7
 .loop
     movem.l d0-d1/a1,-(a7)
@@ -2157,7 +2161,7 @@ draw_intro_screen
 
     move.b  #$0C,d0
     move.b  #$C0,d1
-    lea screen_data+DOT_FRAME_OFFSET+SCREEN_PLANE_SIZE,a1   ; dot offset white plane 1    
+    LOAD_SCREEN_DATA DOT_FRAME_OFFSET+SCREEN_PLANE_SIZE   ; dot offset white plane 1    
     move.l  a1,a2
     moveq   #16,d2
 .loopv
@@ -2203,7 +2207,7 @@ draw_intro_screen
     move.w  #5,d3
     lea     mul40_table(pc),a3
 .dotloop
-    lea screen_data+DOT_FRAME_OFFSET,a1
+    LOAD_SCREEN_DATA DOT_FRAME_OFFSET
 
     clr.w   d0
     move.b  (a0)+,d0    ; dot position
@@ -2417,7 +2421,7 @@ draw_bonus_score:
     swap    d3
     sub.w  #8+Y_START,d4
     sub.w  #8+X_START,d3
-    lea	screen_data,a1
+    LOAD_SCREEN_DATA 0
     move.l  a1,a2
 
     move.w  d3,d0
@@ -2620,7 +2624,7 @@ draw_last_life:
     add.w #NB_BYTES_PER_MAZE_LINE*8,d3
     moveq.l #-1,d2  ; mask
 
-    lea	screen_data+SCREEN_PLANE_SIZE,a1
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE
     move.w  d3,d0
     moveq.l #0,d1
     bsr blit_plane
@@ -2629,7 +2633,7 @@ draw_last_life:
     
 draw_lives:
     moveq.w #1,d7
-    lea	screen_data+SCREEN_PLANE_SIZE*2,a1
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE*2
 .cloop
     move.l #NB_BYTES_PER_MAZE_LINE*8,d0
     moveq.l #0,d1
@@ -2645,7 +2649,7 @@ draw_lives_no_clear:
     bmi.b   .out
     move.w #NB_BYTES_PER_MAZE_LINE*8,d3
     moveq.l #-1,d2  ; mask
-    lea	screen_data+SCREEN_PLANE_SIZE*2,a1
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE*2
     lea pac_lives+BOB_16X16_PLANE_SIZE*2,a0
     move.w  d7,d6
     
@@ -2658,7 +2662,7 @@ draw_lives_no_clear:
     add.w   #16,d3
     dbf d7,.lloop
 
-    lea	screen_data+SCREEN_PLANE_SIZE*3,a1
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE*3
     lea pac_lives+BOB_16X16_PLANE_SIZE*3,a0
     move.w  d6,d7
     move.w #NB_BYTES_PER_MAZE_LINE*8,d3
@@ -2767,37 +2771,28 @@ internal_bonus_draw
     lsl.l   d4,d2
     swap    d2
     clr.w   d2
-.pdraw
+.pdraw    
     move.w  d0,d3
-    move.w  d1,d4       ; save
+    ; save X modulus (0-15)
+    and.w   #$F,d3
     
-    lea screen_data,a1
-    move.l  a1,a2
+    LOAD_SCREEN_DATA 0
+    ADD_XY_TO_A1    A2      ; compute the address directly, nullify Y
+    move.l  a1,a2   ; background mask
+    move.w   d3,d0
     bsr blit_plane_cookie_cut
 
-    
-    move.w  d3,d0
-    move.w  d4,d1
-    lea screen_data+SCREEN_PLANE_SIZE,a1
+    ; we have to cookie-cut the rest of the planes (2-3) just in case mspacman is around
+
+    REPT    3
+    move.w   d3,d0
+    clr.w   d1
+    lea  (SCREEN_PLANE_SIZE,a2),a1   ; restore a1 with screen size offset
+    move.l  a1,a2
     lea  (BOB_16X16_PLANE_SIZE,a0),a0
-    move.l  a1,a2
     bsr blit_plane_cookie_cut
-
+    ENDR
   
-    ; we have to cookie-cut the draw just in case mspacman is around
-    move.w  d3,d0
-    move.w  d4,d1
-    lea screen_data+SCREEN_PLANE_SIZE*2,a1
-    move.l  a1,a2   ; cookie cut on itself
-    lea  (BOB_16X16_PLANE_SIZE,a0),a0
-    bsr blit_plane_cookie_cut
-    
-    move.w  d3,d0
-    move.w  d4,d1
-    lea screen_data+SCREEN_PLANE_SIZE*3,a1
-    move.l  a1,a2   ; cookie cut on itself
-    lea  (BOB_16X16_PLANE_SIZE,a0),a0
-    bsr blit_plane_cookie_cut
     
 	rts
 	
@@ -2838,13 +2833,13 @@ draw_maze:
     move.w  d0,maze_fill_color
     move.b  (1,a1),total_number_of_dots
     
-    lea screen_data,a1
+    LOAD_SCREEN_DATA 0
 
     ; copy maze data in bitplanes
     move.l maze_bitmap_plane_1(pc),a0
     bsr .copyplane
     
-    lea screen_data+SCREEN_PLANE_SIZE,a1
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE
 
 .copyplane
     move.w  #NB_LINES-1,d0
@@ -2857,7 +2852,7 @@ draw_maze:
     dbf d0,.copyline
 
     
-    lea screen_data+SCREEN_PLANE_SIZE*2,a1
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE*2
     bsr clear_playfield_plane
     add.w   #SCREEN_PLANE_SIZE,a1
     bsr clear_playfield_plane
@@ -2868,7 +2863,7 @@ draw_maze:
 ; debug function
 draw_bounds
     move.l  maze_wall_table(pc),a0
-    lea	screen_data+SCREEN_PLANE_SIZE*3,a1
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE*3
     
     move.w  #NB_TILE_LINES-1,d0    
 .loopy
@@ -2949,7 +2944,7 @@ draw_dots:
     clr.l   (8,a2)
     clr.l   (12,a2)
     ; draw pen gate
-    lea	screen_data+PEN_PLANE_OFFSET,a1
+    LOAD_SCREEN_DATA PEN_PLANE_OFFSET
     moveq.l #-1,d0
     move.b  d0,(a1)
     move.b  d0,(NB_BYTES_PER_LINE,a1)
@@ -2963,7 +2958,7 @@ draw_dots:
 
     ; start with an offset (skip the fake 3 first rows)
     lea dot_table+(Y_START/8)*NB_TILES_PER_LINE,a0    
-    lea	screen_data+DOT_PLANE_OFFSET,a1
+    LOAD_SCREEN_DATA DOT_PLANE_OFFSET
     
     move.w  #NB_TILE_LINES-1-(Y_START/8),d0    
 .loopy
@@ -3039,7 +3034,7 @@ refresh_dot:
     lsl.w   #4,d2   ; *8*2
     add.w  (a1,d2.w),d0
 
-    lea screen_data+DOT_PLANE_OFFSET,a1
+    LOAD_SCREEN_DATA DOT_PLANE_OFFSET
     add.w   d0,a1   ; add x+y*40
     bsr     draw_dot
 .out
@@ -4130,7 +4125,7 @@ draw_intermission_screen_level_9:
     bcc.b   .no_erase
     move.w  stork_y(pc),d1
     move.w  #4,d2
-    lea     screen_data,a1
+    LOAD_SCREEN_DATA 0
     ADD_XY_TO_A1    a0
     move.w  #SCREEN_PLANE_SIZE,d3
     bsr     clear_plane_any_blitter
@@ -4143,7 +4138,7 @@ draw_intermission_screen_level_9:
     
     tst.w   baby_released
     beq.b   .no_erase
-    lea     screen_data,a1
+    LOAD_SCREEN_DATA 0
     ; also erase baby wrap
     move.w  junior_x(pc),d0
     move.w  junior_y(pc),d1
@@ -4177,7 +4172,7 @@ draw_intermission_screen_level_9:
  
     ; stork blitting / clipping
     
-    lea     screen_data,a1
+    LOAD_SCREEN_DATA 0
     move.l  a1,a2
     bsr blit_plane_any
 
@@ -4214,7 +4209,7 @@ draw_intermission_screen_level_9:
     cmp.w   #3,baby_released
     bne.b   .noj
     lea junior,a0
-    lea screen_data+SCREEN_PLANE_SIZE,a1
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE
     moveq.l #-1,d2
     bsr blit_plane
     bra.b   .no_stork_draw
@@ -4224,7 +4219,7 @@ draw_intermission_screen_level_9:
     move.w  d1,d4
     lea baby_wrap,a0
     lea 256(a0),a3
-    lea screen_data,a1
+    LOAD_SCREEN_DATA 0
     move.l  a1,a2
     move.l  #-1,d2
     moveq   #3,d5
@@ -4491,13 +4486,13 @@ draw_intermission_screen_level_2:
     move.w  #X_MAX/2-8-X_START,d0
     move.w  ypos(a4),d1
     sub.w   #24+Y_START,d1
-    lea     screen_data,a1
+    LOAD_SCREEN_DATA 0
     moveq.l #-1,d2
     lea     heart,a0
     movem.w d0-d1,-(a7)
     bsr     blit_plane
     movem.w (a7)+,d0-d1
-    lea     screen_data+3*SCREEN_PLANE_SIZE,a1
+    LOAD_SCREEN_DATA 3*SCREEN_PLANE_SIZE
     bsr     blit_plane
     move.w  #4,intermission_phase
 .outd    
@@ -4519,7 +4514,7 @@ draw_clapper
     
     cmp.w   #3*4,d5
     bne.b   .no_clear_text
-    lea     screen_data,a1
+    LOAD_SCREEN_DATA 0
     move.w  #CLAPPER_X+42,d0
     move.w  #102-Y_START,d1
     lea     clapper_blank_text(pc),a0
@@ -4535,7 +4530,7 @@ draw_clapper
     lea clapper_base,a0
     move.w  #CLAPPER_X,d0
     move.w  #CLAPPER_Y+16,d1
-    lea     screen_data,a1
+    LOAD_SCREEN_DATA 0
     move.w  #6,d2
     move.l  #-1,d3
     move.w  #16,d4
@@ -4547,10 +4542,10 @@ draw_clapper
 
     move.w  #CLAPPER_X,d0
     move.w  #CLAPPER_Y,d1
-    lea     screen_data,a1
+    LOAD_SCREEN_DATA 0
     bsr     blit_plane_any
 
-    lea     screen_data,a1
+    LOAD_SCREEN_DATA 0
     move.w  #CLAPPER_X+24,d0
     move.w  #CLAPPER_Y+7+16,d1
     lea     .act_number(pc),a0
@@ -4569,7 +4564,7 @@ draw_clapper
 
 .clear_clapper:
     ; lazy cpu shit
-    lea     screen_data,a1
+    LOAD_SCREEN_DATA 0
     move.w  #CLAPPER_X,d0
     move.w  #CLAPPER_Y,d1
     move.w  #6,d2
@@ -5840,7 +5835,7 @@ update_pac
     move.b   d0,d2
     beq.b   .end_pac    ; nothing
 
-    lea	screen_data+DOT_PLANE_OFFSET,a1
+    LOAD_SCREEN_DATA DOT_PLANE_OFFSET
     move.w  xpos(a4),d0
     move.w  ypos(a4),d1
     ; are we y-aligned?
@@ -6227,7 +6222,7 @@ draw_pacman:
     add.w   d0,d0
     move.l  (a0,d0.w),a0
 .pacblit
-    lea	screen_data+SCREEN_PLANE_SIZE,a1
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE
     move.w  xpos(a2),d0
     cmp.w   #X_MAX+16,d0
     bcc.b   .no_draw
@@ -6351,7 +6346,7 @@ draw_mspacman:
    
     move.l  h_speed(a2),previous_pacman_hspeed  ; optim h+v
 
-    lea	screen_data+SCREEN_PLANE_SIZE*2,a1
+    LOAD_SCREEN_DATA SCREEN_PLANE_SIZE*2
     
     lea (BOB_16X16_PLANE_SIZE*2,a0),a0    ; skip first plane for bitmap
     move.l  a1,a6
@@ -6630,7 +6625,7 @@ blit_plane_any_internal:
 ; and you feed your pristine background through channel C."
 
 ; < A5: custom
-; < D0,D1: x,y
+; < D0.W,D1.W: x,y
 ; < A0: source
 ; < A1: destination
 ; < A2: background to mix with cookie cut
@@ -6647,13 +6642,13 @@ blit_plane_any_internal_cookie_cut:
     movem.l d0-d7,-(a7)
     ; pre-compute the maximum of shit here
     lea mul40_table(pc),a4
+    swap    d1
+    clr.w   d1
+    swap    d1
     add.w   d1,d1
     move.w  d1,d6   ; save it
     beq.b   .d1_zero    ; optim
     move.w  (a4,d1.w),d1
-    swap    d1
-    clr.w   d1
-    swap    d1
 .d1_zero
     move.l  #$0fca0000,d5    ;B+C-A->D cookie cut   
 
@@ -6677,14 +6672,11 @@ blit_plane_any_internal_cookie_cut:
     ; make offset even. Blitter will ignore odd address
     ; but a 68000 CPU doesn't and since we RETURN A1...
     bclr    #0,d1
-    add.l   d1,a1       ; plane position
+    add.l   d1,a1       ; plane position (long: allow unsigned D1)
 
     ; a4 is a multiplication table
     ;;beq.b   .d1_zero    ; optim
     move.w  (a4,d6.w),d1
-    swap    d1
-    clr.w   d1
-    swap    d1
     add.w   d7,a2       ; X
 ;;.d1_zero    
     ; compute offset for maze plane
@@ -6734,7 +6726,7 @@ blit_plane_any_internal_cookie_cut:
 blit_4_planes
     movem.l d2-d6/a0-a1/a5,-(a7)
     lea $DFF000,A5
-    lea     screen_data,a1
+    LOAD_SCREEN_DATA 0
     moveq.l #3,d7
 .loop
     movem.l d0-d1/a1,-(a7)
@@ -6952,7 +6944,7 @@ write_color_string
     bra.b   .out
 .color_found
     ; d5: color index
-    lea screen_data,a1
+    LOAD_SCREEN_DATA 0
     moveq   #3,d3
     move.w  d0,d4
 .plane_loop
@@ -7173,7 +7165,6 @@ dosname
     ; variables
 gfxbase_copperlist
     dc.l    0
-    
 previous_random
     dc.l    0
 joystick_state
