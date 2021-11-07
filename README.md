@@ -20,6 +20,7 @@ FEATURES:
 - original intro
 - joystick controlled (port 1) or keyboard controls (arrows + space)
 - can run directly from shell or from whdload (fast machines/complex configurations)
+- high score save
 
 CONTROLS:
 
@@ -32,9 +33,7 @@ CONTROLS:
 MINOR ISSUES:
 
 - ghosts in pen bounce slightly too fast in high levels
-- a few pixels of mspacman left in very rare occasions
-- use double buffering
-- level 4 ghosts still slow down in tunnels
+- from floppy: crashes when exiting
 
 ABOUT ACTS:
 

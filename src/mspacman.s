@@ -302,9 +302,16 @@ Start:
     moveq.l #0,d0
     jsr _LVOOpenLibrary(a6)
     move.l  d0,_gfxbase
-    
+    bsr load_highscores
+    ; wait 1 second so floppy drive can stop
+    move.l  #30,d1
+    move.l  _dosbase(pc),a6
+    jsr     _LVODelay(a6)    
+    bra.b   .cont
 .startup
     bsr load_highscores
+.cont
+    
     lea  _custom,a5
     move.b  #0,controller_joypad_1
     
@@ -2446,7 +2453,7 @@ draw_bonus_score:
 
 ; what: clears a plane of any width (not using blitter, no shifting, start is multiple of 8), 16 height
 ; args:
-; < A1: dest (must be even)
+; < A1: dest
 ; < D0: X (multiple of 8)
 ; < D1: Y
 ; < D2: blit width in bytes (even, 2 must be added same interface as blitter)
@@ -2463,6 +2470,7 @@ clear_plane_any_cpu:
 
     lsr.w   #3,d0
     add.w   d0,a1
+    move.l  a1,d0   ; make sure address is even when tested
     
     move.l  a1,a0
     ; length must be a multiple of 4
@@ -6290,8 +6298,15 @@ draw_mspacman:
     add.w   d0,a0       ; proper frame to blit
     move.l  (a0),a0
     bra.b   .pacblit
-
 .normal
+    move.w  direction(a2),d0
+    lea  pac_dir_table(pc),a0
+    move.l  (a0,d0.w),a0
+    move.w  frame(a2),d0
+    add.w   d0,d0
+    add.w   d0,d0
+    move.l  (a0,d0.w),a0
+.pacblit
     ; first, remove first plane
     tst.l   d5    
     beq.b   .no_erase
@@ -6307,17 +6322,8 @@ draw_mspacman:
     move.w  #18,d4
     bsr clear_plane_any_blitter_internal
     movem.l (a7)+,d4-d6/a2
-
-
 .no_erase
-    move.w  direction(a2),d0
-    lea  pac_dir_table(pc),a0
-    move.l  (a0,d0.w),a0
-    move.w  frame(a2),d0
-    add.w   d0,d0
-    add.w   d0,d0
-    move.l  (a0,d0.w),a0
-.pacblit
+
     move.w  xpos(a2),d0
     bpl.b   .do_draw
     rts
@@ -6345,8 +6351,6 @@ draw_mspacman:
     clr.w   d2
 .pdraw
    
-    move.l  h_speed(a2),previous_pacman_hspeed  ; optim h+v
-
     LOAD_SCREEN_DATA SCREEN_PLANE_SIZE*2
     
     lea (BOB_16X16_PLANE_SIZE*2,a0),a0    ; skip first plane for bitmap
@@ -6631,7 +6635,6 @@ blit_plane_any_internal:
 ; < A1: destination
 ; < A2: background to mix with cookie cut
 ; < A3: source mask for cookie cut
-; < A4: multiplication table for background (x28 for maze, x40 for screen)
 ; < D2: width in bytes (inc. 2 extra for shifting)
 ; < D3: blit mask
 ; < D4: height
@@ -7223,10 +7226,6 @@ previous_mspacman_address
     dc.l    0
 previous_mrpacman_address
     dc.l    0
-previous_pacman_hspeed
-    dc.w    0
-previous_pacman_vspeed
-    dc.w    0
 ghost_which_counts_dots
     dc.l    0
 score_frame
@@ -7652,7 +7651,7 @@ get_ghost_move_speed:
     bne.b   .no_tunnel	; TODO check speed in pen
 .tunnel
 	; ghosts don't slow down anymore in the tunnel from level 4
-	cmp.w	#4,level_number
+	cmp.w	#3,level_number     ; levels start at 0 !
 	bcc.b	.no_tunnel
     move.w  #4*16,d2
     bra.b   .table_computed
