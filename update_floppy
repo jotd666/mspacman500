@@ -1,0 +1,8 @@
+.key nope
+
+propack p a mspacman
+copy mspacman.RNC DF0:mspacman
+copy mspacman.slave DF0:
+copy README.md df0:
+delete df0:mspacman.high
+

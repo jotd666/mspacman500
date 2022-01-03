@@ -27,13 +27,12 @@ CONTROLS:
 - joystick directions/arrows: move ms pacman
 - space/fire button: start game/skip act (intermission) screens
 - P/second button: pause
-- F10 (or quitkey): quit to DOS
+- F10 (or quitkey): quit to DOS (and saves high-scores)
 - ESC: quit current game
 
 MINOR ISSUES:
 
 - ghosts in pen bounce slightly too fast in high levels
-- from floppy: crashes when exiting
 
 ABOUT ACTS:
 

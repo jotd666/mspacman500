@@ -2,7 +2,7 @@
 ;*    ----- Protracker V2.3B Playroutine -----	  *
 ;**************************************************
 ;
-; Version 6.1
+; Version 6.2
 ; Written by Frank Wille in 2013, 2016, 2017, 2018, 2019, 2020, 2021.
 ;
 ; I, the copyright holder of this work, hereby release it into the
@@ -555,9 +555,7 @@ _mt_init:
 	move.b	d0,CIAB+CIATALO
 	lsr.w	#8,d0
 	move.b	d0,CIAB+CIATAHI
-    
 
-    
 mt_reset:
 ; a4 must be initialised with base register
 
@@ -591,19 +589,6 @@ mt_reset:
 	move.w	#$0200,mt_chan3+n_intbit(a4)
 	move.w	#$0400,mt_chan4+n_intbit(a4)
 
-	; make sure n_period doesn't start as 0
-	move.w	#320,d0
-	move.w	d0,mt_chan1+n_period(a4)
-	move.w	d0,mt_chan2+n_period(a4)
-	move.w	d0,mt_chan3+n_period(a4)
-	move.w	d0,mt_chan4+n_period(a4)
-
-	; disable sound effects
-	clr.w	mt_chan1+n_sfxlen(a4)
-	clr.w	mt_chan2+n_sfxlen(a4)
-	clr.w	mt_chan3+n_sfxlen(a4)
-	clr.w	mt_chan4+n_sfxlen(a4)
-
 	clr.b	mt_E8Trigger(a4)
 	ifeq	MINIMAL
 	clr.b	mt_SongEnd(a4)
@@ -621,30 +606,38 @@ _mt_end:
 ; Stop playing current module.
 ; a6 = _custom
 
+	move.w	#$4000,INTENA(a6)
 	ifd	SDATA
 	clr.b	mt_Enable(a4)
-	clr.w	mt_chan1+n_volume(a4)
-	clr.w	mt_chan2+n_volume(a4)
-	clr.w	mt_chan3+n_volume(a4)
-	clr.w	mt_chan4+n_volume(a4)
+	lea	mt_chan1(a4),a0
+	bsr	resetch
+	lea	mt_chan2(a4),a0
+	bsr	resetch
+	lea	mt_chan3(a4),a0
+	bsr	resetch
+	lea	mt_chan4(a4),a0
+	bsr	resetch
 	else
-	lea	mt_data(pc),a0
-	clr.b	mt_Enable(a0)
-	clr.w	mt_chan1+n_volume(a0)
-	clr.w	mt_chan2+n_volume(a0)
-	clr.w	mt_chan3+n_volume(a0)
-	clr.w	mt_chan4+n_volume(a0)
+	lea	mt_data(pc),a1
+	clr.b	mt_Enable(a1)
+	lea	mt_chan1(a1),a0
+	bsr	resetch
+	lea	mt_chan2(a1),a0
+	bsr	resetch
+	lea	mt_chan3(a1),a0
+	bsr	resetch
+	lea	mt_chan4(a1),a0
+	bsr	resetch
 	endc
-
 	moveq	#0,d0
 	move.w	d0,AUD0VOL(a6)
 	move.w	d0,AUD1VOL(a6)
 	move.w	d0,AUD2VOL(a6)
 	move.w	d0,AUD3VOL(a6)
 	move.w	#$000f,DMACON(a6)
+	move.w	#$c000,INTENA(a6)
 	rts
 
-; added by JOTD
 _mt_start:
 	ifnd	SDATA
 	move.l	a4,-(sp)
@@ -659,6 +652,18 @@ _mt_start:
 	move.l	(sp)+,a4
 	endc
     rts
+
+resetch:
+; a0 = channel status
+; All registers are preserved!
+
+	move.w	#320,n_period(a0)	; make sure period is not illegal
+	clr.w	n_volume(a0)
+	clr.w	n_sfxlen(a0)
+	clr.b	n_sfxpri(a0)
+	clr.b	n_looped(a0)
+	rts
+
 
 	ifeq	MINIMAL
 ;---------------------------------------------------------------------------
@@ -1111,20 +1116,28 @@ _mt_mastervol:
 
 	; adapt all channel volumes immediately
 	move.l	a0,mt_MasterVolTab(a4)
+	tst.b	mt_chan1+n_sfxpri(a4)
+	bne	.1
 	move.w	mt_chan1+n_volume(a4),d0
 	move.b	(a0,d0.w),d0
 	move.w	d0,AUD0VOL(a6)
+.1:	tst.b	mt_chan2+n_sfxpri(a4)
+	bne	.2
 	move.w	mt_chan2+n_volume(a4),d0
 	move.b	(a0,d0.w),d0
 	move.w	d0,AUD1VOL(a6)
+.2:	tst.b	mt_chan3+n_sfxpri(a4)
+	bne	.3
 	move.w	mt_chan3+n_volume(a4),d0
 	move.b	(a0,d0.w),d0
 	move.w	d0,AUD2VOL(a6)
+.3:	tst.b	mt_chan4+n_sfxpri(a4)
+	bne	.4
 	move.w	mt_chan4+n_volume(a4),d0
 	move.b	(a0,d0.w),d0
 	move.w	d0,AUD3VOL(a6)
 
-	move.w	#$c000,INTENA(a6)
+.4:	move.w	#$c000,INTENA(a6)
 
 	ifnd	SDATA
 	move.l	(sp)+,a4
