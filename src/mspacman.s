@@ -313,14 +313,18 @@ Start:
     move.l  #MODE_OLDFILE,d2
     jsr     _LVOOpen(a6)
     move.l  d0,d1
-    beq.b   .startup
+    beq.b   .no_floppy
     
     ; "floppy" file found
     jsr     _LVOClose(a6)
     ; wait 2 seconds for floppy drive to switch off
     move.l  #100,d1
     jsr     _LVODelay(a6)
-    
+.no_floppy
+	; stop cdtv device if found, avoids that cd device
+	; sends spurious interrupts
+    move.l  #CMD_STOP,d0
+    bsr send_cdtv_command
 .startup
 
     
@@ -332,6 +336,7 @@ Start:
     tst.l   _resload
     bne.b   .no_forbid
     move.l  _gfxbase(pc),a4
+    move.l gb_ActiView(a4),gfxbase_actiview
     move.l StartList(a4),gfxbase_copperlist
 
     move.l  4,a6
@@ -342,14 +347,14 @@ Start:
 	move.l	D0,A0
 	move.l	#-1,pr_WindowPtr(A0)	; no more system requesters (insert volume, write protected...)
 
+    sub.l   a1,a1
+    move.l  a4,a6
+    jsr (_LVOLoadView,a6)
+    jsr (_LVOWaitTOF,a6)
+    jsr (_LVOWaitTOF,a6)
     
 .no_forbid
     
-;    sub.l   a1,a1
-;    move.l  a4,a6
-;    jsr (_LVOLoadView,a6)
-;    jsr (_LVOWaitTOF,a6)
-;    jsr (_LVOWaitTOF,a6)
 
     move.w  #STATE_INTRO_SCREEN,current_state
     
@@ -610,13 +615,17 @@ intro:
     bsr     restore_interrupts
     bsr     wait_blit
     bsr     finalize_sound
+	; restart CDTV device
+    move.l  #CMD_START,d0
+    bsr send_cdtv_command
     bsr     save_highscores
 
     lea _custom,a5
-    move.l  _gfxbase,a1
-    move.l  gfxbase_copperlist,StartList(a1) ; adresse du début de la liste
-    move.l  gfxbase_copperlist,cop1lc(a5) ; adresse du début de la liste
-    clr.w  copjmp1(a5)
+	move.l	gfxbase_copperlist,cop1lc(a5)
+    move.l  _gfxbase,a6
+ 	move.l	gfxbase_actiview,a1
+	jsr	_LVOLoadView(a6)
+
     ;;move.w #$8060,dmacon(a5)        ; réinitialisation du canal DMA
     
     move.l  4.W,A6
@@ -7128,9 +7137,85 @@ load_highscores
     move.l  d4,d1
     jsr (_LVOClose,a6)    
 .no_file
-
-
     rts
+
+
+; < D0: command to send to cdtv 
+send_cdtv_command:
+	tst.l	_resload
+	beq.b	.go
+	rts		; not needed within whdload (and will fail)
+.go
+	movem.l	d0-a6,-(a7)
+    move.l  d0,d5
+    
+	; alloc some mem for IORequest
+
+	MOVEQ	#40,D0			
+	MOVE.L	#MEMF_CLEAR|MEMF_PUBLIC,D1
+	move.l	$4.W,A6
+	jsr	_LVOAllocMem(a6)
+	move.l	D0,io_request
+	beq	.Quit
+
+	; open cdtv.device
+
+	MOVEA.L	D0,A1
+	LEA	cdtvname(PC),A0	; name
+	MOVEQ	#0,D0			; unit 0
+	MOVE.L	D0,D1			; flags
+	jsr	_LVOOpenDevice(a6)
+	move.l	D0,D6
+	ext	D6
+	ext.l	D6
+	bne	.Quit		; unable to open
+
+    ; wait a while if CMD_STOP
+    cmp.l   #CMD_STOP,d5
+    bne.b   .nowait
+	move.l	_dosbase(pc),A6
+	move.l	#20,D1
+	JSR	_LVODelay(a6)		; wait 2/5 second before launching
+.nowait
+	; prepare the IORequest structure
+
+	MOVEQ	#0,D0
+	MOVEA.L	io_request(pc),A0
+	MOVE.B	D0,8(A0)
+	MOVE.B	D0,9(A0)
+	SUBA.L	A1,A1
+	MOVE.L	A1,10(A0)
+	MOVE.L	A1,14(A0)
+	CLR.L	36(A0)
+
+	move.l	io_request(pc),A0
+
+	move.l	A0,A1
+	move.w	d5,(IO_COMMAND,a1)
+	move.l	$4.W,A6
+	JSR		_LVODoIO(a6)
+
+.Quit:
+	; close cdtv.device if open
+
+	tst.l	D6
+	bne	.Free
+	MOVE.L	io_request(pc),D1
+	beq	.End
+	move.l	D1,A1
+	move.l	$4.W,A6
+	jsr	_LVOCloseDevice(a6)
+
+.Free:		
+	; free the memory
+
+	MOVEQ	#40,D0
+	move.l	io_request(pc),A1
+	move.l	$4.W,A6
+	JSR		_LVOFreeMem(a6)
+.End:
+	movem.l	(a7)+,d0-a6
+	rts
     
 save_highscores
     tst.w   cheat_keys
@@ -7168,12 +7253,16 @@ _gfxbase
     dc.l    0
 _resload
     dc.l    0
+io_request:
+	dc.l	0
 _keyexit
     dc.b    $59
 scores_name
     dc.b    "pacman.high",0
 highscore_needs_saving
     dc.b    0
+cdtvname:
+	dc.b	"cdtv.device",0
 graphicsname:   dc.b "graphics.library",0
 dosname
         dc.b    "dos.library",0
@@ -7183,6 +7272,8 @@ dosname
     include RNC_1C.s
     ; variables
 gfxbase_copperlist
+    dc.l    0
+gfxbase_actiview
     dc.l    0
 previous_random
     dc.l    0
@@ -8183,8 +8274,12 @@ dot_table
     include ptplayer.s
 
     SECTION  S4,DATA,CHIP
+empty_coplist:
+	dc.w	bplcon0,$200
+	dc.l	-2
+	
 ; main copper list
-coplist
+coplist:
    dc.l  $01080000
    dc.l  $010a0000
 bitplanes:
