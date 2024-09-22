@@ -10,9 +10,13 @@ if os.path.exists(packed_exe):
 # JOTD path for cranker, adapt to wh :)
 os.environ["PATH"] += os.pathsep+r"K:\progs\cli"
 
+
 cmd_prefix = ["make","-f","makefile"]
 
 subprocess.check_call(cmd_prefix+["clean"],cwd=os.path.join(progdir,"src"))
+
+subprocess.check_call(["cmd","/c","convert_sounds.py"],cwd=os.path.join(progdir,"assets"))
+subprocess.check_call(["cmd","/c","convert_sprites.py"],cwd=os.path.join(progdir,"assets"))
 
 subprocess.check_call(cmd_prefix+["RELEASE_BUILD=1"],cwd=os.path.join(progdir,"src"))
 # create archive

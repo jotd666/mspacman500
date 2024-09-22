@@ -168,10 +168,15 @@ game_palette_txt = """
 
 
 game_palette = bitplanelib.palette_dcw2palette(game_palette_txt)
-bitplanelib.palette_dump(game_palette,r"../src/palette.s",as_copperlist=False)
+bitplanelib.palette_dump(game_palette,r"../src/palette.s")
 game_palette_16 = game_palette[0:16]
 
-outdir = "dumps"
+dump_it = False
+
+if dump_it:
+    outdir = "dumps"
+    if not os.path.exists(outdir):
+        os.mkdir(outdir)
 
 def process_tiles():
     json_file = "tiles.json"
@@ -226,11 +231,12 @@ def process_tiles():
 
             area = (x, y, x + width, y + height)
             cropped_img = sprites.crop(area)
-            if nb_frames == 1:
-                cropped_name = os.path.join(outdir,"{}.png".format(name))
-            else:
-                cropped_name = os.path.join(outdir,"{}_{}.png".format(name,i))
-            cropped_img.save(cropped_name)
+            if dump_it:
+                if nb_frames == 1:
+                    cropped_name = os.path.join(outdir,"{}.png".format(name))
+                else:
+                    cropped_name = os.path.join(outdir,"{}_{}.png".format(name,i))
+                cropped_img.save(cropped_name)
 
             # save
             x_size = cropped_img.size[0]
@@ -320,8 +326,9 @@ def process_fonts():
             area = (x, y, x + width, y + height)
             cropped_img = sprites.crop(area)
             bn = "{}_{}.png".format(name,i) if nb_frames != 1 else name+".png"
-            cropped_name = os.path.join(outdir,bn)
-            cropped_img.save(cropped_name)
+            if dump_it:
+                cropped_name = os.path.join(outdir,bn)
+                cropped_img.save(cropped_name)
 
             # save
             x_size = cropped_img.size[0]
