@@ -2021,7 +2021,7 @@ animate_power_pills
 .powerdot_done
     rts
     
-; < D0: score (/10)
+; < D0.L: score (/10)
 add_to_score:
     add.l   d0,score
     tst.b  extra_life_awarded
@@ -3781,6 +3781,12 @@ check_pac_bonus_collision
 
     lea bonus_eaten_sound(pc),a0
     bsr play_fx
+	
+	; add to score (was missing from previous versions!)
+	moveq	#0,d0
+	move.w	fruit_score,d0
+	bsr		add_to_score
+	
     ; show score
     move.w  #BONUS_SCORE_TIMER_VALUE,bonus_score_timer
     move.w  #MSG_SHOW,bonus_score_display_message      ; tell draw routine to show score
@@ -7315,7 +7321,7 @@ maze_blink_timer
     ; table up to level 21. After that it's the same
 
 bonus_level_score:  ; *10
-    dc.w    10,30,50,70,100,200,500,500
+    dc.w    10,20,50,70,100,200,500,500
 
 ; general purpose timer for non-game states (intro, game over...)
 state_timer:
@@ -7561,6 +7567,8 @@ bonus_table:
     dc.l    bonus_pics+BOB_16X16_PLANE_SIZE*5*REPTN
     ENDR
 
+
+	
 digits:
     incbin  "0.bin"
     incbin  "1.bin"
