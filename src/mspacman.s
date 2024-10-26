@@ -1545,7 +1545,6 @@ draw_debug
 draw_ghosts:
     tst.w  ghost_eaten_timer
     bmi.b   .no_ghost_eat
-    bsr hide_ghost_sprites
     
     ; store score
     lea player(pc),a4
@@ -1556,14 +1555,17 @@ draw_ghosts:
     sub.w   #30,d1
     bsr store_sprite_pos      
     move.l  d0,(a0)
-    lea score_sprite_entry,a1
+    move.l score_sprite_entry(pc),a1
     move.l  a0,d2
     move.w  d2,(6,a1)
     swap    d2
     move.w  d2,(2,a1)
     ; change color for score, ghost has disappeared anyway
-
-    move.w  #$00ff,_custom+color+32+8+2
+	move.l	score_sprite_color_register(pc),a1
+    ;move.w  #$00ff,(a1) 
+    move.w  #$00ff,(2,a1)
+    ;move.w  #$00ff,(a1)+ 
+    ;move.w  #$00ff,(a1)+ 
     ; don't place sprites
     rts
 .no_ghost_eat
@@ -3841,14 +3843,18 @@ a_ghost_was_eaten:
     move.w  #MODE_EYES,mode(a4)
     ; test display score with the proper color (reusing pink sprite palette)
     move.w  #GHOST_KILL_TIMER,ghost_eaten_timer
+	move.l	copperlist_address(a4),score_sprite_entry
+	move.l	color_register(a4),score_sprite_color_register
     cmp.w   #STATE_PLAYING,current_state
     bne.b   .no_sound
     lea     ghost_eaten_sound(pc),a0
     bsr     play_fx
 .no_sound
     
-    move.w  next_ghost_iteration_score(pc),d0
-    add.w   #1,next_ghost_iteration_score
+    lea  next_ghost_iteration_score(pc),a0
+	move.w	(a0),d0
+    addq    #1,d0
+	move.w	d0,(a0)
     add.w   d0,d0
     add.w   d0,d0
     lea  score_value_table(pc),a0
@@ -7367,6 +7373,10 @@ level_number:
     dc.w    0
 player_killed_timer:
     dc.w    -1
+score_sprite_entry:
+	dc.l	0
+score_sprite_color_register:
+	dc.l	0
 ghost_eaten_timer:
     dc.w    -1
 bonus_score_timer:
@@ -8311,12 +8321,11 @@ ghost_sprites:
     ; red ghost
     dc.w    sprpt+0,0
     dc.w    sprpt+2,0
-nail_sprite
+nail_sprite:
     ; red target / nail / drape
     dc.w    sprpt+4,0
     dc.w    sprpt+6,0
-score_sprite_entry:
-    ; pink ghost / score for ghost eaten
+    ; pink ghost
     dc.w    sprpt+8,0
     dc.w    sprpt+10,0
     ; pink target
