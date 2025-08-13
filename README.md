@@ -33,6 +33,7 @@ CONTROLS:
 MINOR ISSUES:
 
 - ghosts in pen bounce slightly too fast in high levels
+- in the last release when you get all the 4 ghosts with the pillar, there's a graphich glitch
 
 ABOUT ACTS:
 
