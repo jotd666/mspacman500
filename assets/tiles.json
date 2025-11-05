@@ -136,6 +136,30 @@
   },
 
  
+{
+   "name":"red_ghost_bob",
+   "frames":1,
+   "start_x":0,
+   "start_y":64
+  },
+{
+   "name":"pink_ghost_bob",
+   "frames":1,
+   "start_x":0,
+   "start_y":80
+  },
+  {
+   "name":"cyan_ghost_bob",
+   "frames":1,
+   "start_x":0,
+   "start_y":96
+  },
+   {
+  "name":"orange_ghost_bob",
+   "frames":1,
+   "start_x":0,
+   "start_y":112
+  },
     {
   "name":"scores",
    "sprite_number":5,

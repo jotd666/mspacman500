@@ -33,7 +33,6 @@ CONTROLS:
 MINOR ISSUES:
 
 - ghosts in pen bounce slightly too fast in high levels
-- in the last release when you get all the 4 ghosts with the pillar, there's a graphich glitch
 
 ABOUT ACTS:
 
@@ -48,6 +47,8 @@ CREDITS:
 - phx: sfx/module player
 - mrv2k: icon
 - meynaf: random routine
+- TheBoctor: help with bugfix (https://github.com/jotd666/mspacman500/issues/1)
+  and git repository fixes
 - eab forum: useful advice & support
 - Rob Northen: unpacker (http://aminet.net/util/pack/RNC_ProPack.lha)
 - 125scratch: sprite rips https://www.spriters-resource.com/arcade/mspacman/
@@ -63,6 +64,11 @@ Prerequesites:
 - sox (included)
 - vasm 68k (included)
 - rnc (Rob Nothen cruncher unofficial port, included)
+- "bitplanelib.py" (asset conversion tool needs it) at https://github.com/jotd666/amiga68ktools.git
+- from the above tools repository you'll also need wmake.py (enhanced makefile) and wdate.py (whdload slave)
+- PIL or Pillow package for Python, used when converting sprite images to raw
+- WHDLoad SDK headers
+- GNU Make for Windows
 
 * besides the .bin files created from png by python, the rest of the process could be built on an amiga with phxass
  or some other assembler and sox for the amiga, but you have to be really mad to attempt it in 2021...)
@@ -74,7 +80,6 @@ Build process:
   just run the "convert_sprites.py" python script, then use the "convert_sounds.py"
   python script (audio).
 - python and sox must be installed to be able to perform the wav2raw conversions
-- get "bitplanelib.py" (asset conversion tool needs it) at https://github.com/jotd666/amiga68ktools.git
 
 Binary assets must be created first, then makefile must be called to create the "mspacman" program
 

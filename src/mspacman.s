@@ -3853,8 +3853,9 @@ a_ghost_was_eaten:
     
     lea  next_ghost_iteration_score(pc),a0
 	move.w	(a0),d0
-    addq    #1,d0
+    addq    #1,d0		; increase for next time
 	move.w	d0,(a0)
+    subq    #1,d0		; we need previous value
     add.w   d0,d0
     add.w   d0,d0
     lea  score_value_table(pc),a0
