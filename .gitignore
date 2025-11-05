@@ -1,0 +1,11 @@
+*.o
+*.zip
+*.bin
+*.raw
+*.pyc
+c
+s
+src/datetime
+*.slave
+*.bak
+

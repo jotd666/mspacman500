@@ -1,0 +1,86 @@
+MsPacman 500
+
+This is a (successful) attempt by jotd to create a 1:1 port of the famous arcade game on Amiga 500 using 100% 68k assembly.
+
+The display is 4:3 so scores, lives, bonuses are on the side rather than on top/botton. The gameplay layout is 1:1 vs
+the original, though.
+
+REQUIRES:
+
+- any 68k CPU
+- Kickstart 1.3, 512k memory or
+- Kickstart 2.0, 1MB memory
+
+FEATURES:
+
+- original visual & sounds
+- original ghost behaviour & speed
+- 50 frames per second (PAL) even on a 68000 A500
+- all levels & bonuses & intermission sequences
+- original intro
+- joystick controlled (port 1) or keyboard controls (arrows + space)
+- can run directly from shell or from whdload (fast machines/complex configurations)
+- high score save
+
+CONTROLS:
+
+- joystick directions/arrows: move ms pacman
+- space/fire button: start game/skip act (intermission) screens
+- P/second button: pause
+- F10 (or quitkey): quit to DOS (and saves high-scores)
+- ESC: quit current game
+
+MINOR ISSUES:
+
+- ghosts in pen bounce slightly too fast in high levels
+
+ABOUT ACTS:
+
+ The intermissions have been changed to "Acts". The first one shows how Pac-Man and Ms. Pac-Man first meet,
+ the second shows the two chasing each other around the screen,
+ and the third shows Pac-Man and Ms. Pac-Man awaiting the arrival of Junior.
+  
+CREDITS:
+
+- jotd: code and gfx/sfx conversion
+- no9: music conversion to protracker
+- phx: sfx/module player
+- mrv2k: icon
+- meynaf: random routine
+- TheBoctor: help with bugfix (https://github.com/jotd666/mspacman500/issues/1)
+  and git repository fixes
+- eab forum: useful advice & support
+- Rob Northen: unpacker (http://aminet.net/util/pack/RNC_ProPack.lha)
+- 125scratch: sprite rips https://www.spriters-resource.com/arcade/mspacman/
+- midway/gcc: original game :)
+
+BUILDING FROM SOURCES:
+
+Prerequesites:
+
+- Windows
+- python
+- Amiga NDK
+- sox (included)
+- vasm 68k (included)
+- rnc (Rob Nothen cruncher unofficial port, included)
+- "bitplanelib.py" (asset conversion tool needs it) at https://github.com/jotd666/amiga68ktools.git
+- from the above tools repository you'll also need wmake.py (enhanced makefile) and wdate.py (whdload slave)
+- PIL or Pillow package for Python, used when converting sprite images to raw
+- WHDLoad SDK headers
+- GNU Make for Windows
+
+* besides the .bin files created from png by python, the rest of the process could be built on an amiga with phxass
+ or some other assembler and sox for the amiga, but you have to be really mad to attempt it in 2021...)
+* could be done on Linux, just rebuild the rnc cruncher & vasm
+
+Build process:
+
+- To create the ".bin" files and some palette .s asm files, from "assets" subdir, 
+  just run the "convert_sprites.py" python script, then use the "convert_sounds.py"
+  python script (audio).
+- python and sox must be installed to be able to perform the wav2raw conversions
+
+Binary assets must be created first, then makefile must be called to create the "mspacman" program
+
+

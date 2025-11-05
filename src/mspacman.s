@@ -6775,7 +6775,7 @@ blit_4_planes
     bsr blit_plane_any_internal
     movem.l (a7)+,d0-d1/a1
     add.l   #SCREEN_PLANE_SIZE,a1
-    add.l   #64,a0      ; 32 but shifting!
+    add.l   #BOB_16X16_PLANE_SIZE,a0      ; 32 but shifting!
     dbf d7,.loop
     movem.l (a7)+,d2-d6/a0-a1/a5
     rts
