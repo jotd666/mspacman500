@@ -1,7 +1,10 @@
-import os,bitplanelib,json,subprocess
+import os,bitplanelib,json,subprocess,pathlib
 from PIL import Image
+this_dir = pathlib.Path(__file__).parent.absolute()
 
 sprites_dir = "sprites"
+sd = this_dir / ".." / sprites_dir
+sd.mkdir(exist_ok=True)
 
 tunnels = [[(8,3),(17,3)],[(1,6),(23,3)],[(9,1)],[(13,4),(16,4)]]
 
