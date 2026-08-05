@@ -319,22 +319,8 @@ Start:
     jsr     _LVOClose(a6)
     ; wait 0.5 seconds for floppy drive to switch off, and check motor
 .wait
-    move.l  #25,d1
-    jsr     _LVODelay(a6)
-	; in the end, check if led is on
-    move.b  $BFD100,d0
-    not.b   d0               ; invert: active-low -> 1 = asserted
-    btst    #7,d0            ; motor on?
-    beq.s   .led_off         ; motor off -> LED off
-    btst    #3,d0            ; df0: selected?
-    beq.s   .led_off         ; not selected -> LED off
-                             ; df0:'s yellow drive LED is ON here
-    bra.s   .wait	
-.led_off:
-	; wait just a little more
-    move.l  #25,d1
-    jsr     _LVODelay(a6)
-	
+    move.l  #100,d1
+    jsr     _LVODelay(a6)	
 .no_floppy
 	; stop cdtv device if found, avoids that cd device
 	; sends spurious interrupts
